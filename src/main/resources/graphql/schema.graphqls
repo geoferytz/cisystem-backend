@@ -1,0 +1,427 @@
+type Query {
+  me: User
+  products(filter: ProductFilter): [Product!]!
+  product(id: ID!): Product
+
+  categories(filter: CategoryFilter): [Category!]!
+  category(id: ID!): Category
+
+  inventory(filter: InventoryFilter): [InventoryItem!]!
+  stockMovements(filter: StockMovementFilter): [StockMovement!]!
+
+  users: [AdminUser!]!
+  roles: [String!]!
+
+  purchaseOrders: [PurchaseOrder!]!
+  salesOrders: [SalesOrder!]!
+
+  mySales: [MySale!]!
+  mySale(id: ID!): MySale
+
+  expiryAlerts(days: Int!): [ExpiryAlert!]!
+  lowStockAlerts(threshold: Int!): [LowStockAlert!]!
+  lowStockBatchAlerts(threshold: Int!): [LowStockBatchAlert!]!
+
+  inventoryValuation: InventoryValuation!
+  movementAuditReport(filter: MovementAuditFilter): [StockMovement!]!
+
+  dailySalesReport(date: String!): DailySalesReport!
+}
+
+type Mutation {
+  login(input: LoginInput!): AuthPayload!
+
+  createCategory(input: CreateCategoryInput!): Category!
+  updateCategory(input: UpdateCategoryInput!): Category!
+  deleteCategory(input: DeleteCategoryInput!): Boolean!
+
+  createProduct(input: CreateProductInput!): Product!
+  updateProduct(input: UpdateProductInput!): Product!
+  setProductStatus(input: SetProductStatusInput!): Product!
+
+  createBatch(input: CreateBatchInput!): ProductBatch!
+  updateBatchNumber(input: UpdateBatchNumberInput!): ProductBatch!
+
+  createUser(input: CreateUserInput!): AdminUser!
+  setUserActive(input: SetUserActiveInput!): AdminUser!
+  setUserRoles(input: SetUserRolesInput!): AdminUser!
+  resetUserPassword(input: ResetUserPasswordInput!): AdminUser!
+
+  receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
+  createSale(input: CreateSaleInput!): SalesOrder!
+
+  createMySale(input: CreateMySaleInput!): MySale!
+  updateMySale(input: UpdateMySaleInput!): MySale!
+  deleteMySale(input: DeleteMySaleInput!): Boolean!
+
+  adjustInventory(input: AdjustInventoryInput!): InventoryItem!
+}
+
+type MySale {
+  id: ID!
+  createdAt: String!
+  createdBy: String
+  customer: String
+  referenceNumber: String
+  lines: [MySaleLine!]!
+}
+
+type MySaleLine {
+  id: ID!
+  productName: String!
+  quantity: Int!
+  unitPrice: Float!
+}
+
+type PurchaseOrder {
+  id: ID!
+  supplier: String
+  invoiceNumber: String
+  receivedAt: String!
+  receivedBy: String
+  lines: [PurchaseOrderLine!]!
+}
+
+type PurchaseOrderLine {
+  id: ID!
+  productId: ID!
+  sku: String!
+  productName: String!
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  costPrice: Float!
+  quantityReceived: Int!
+}
+
+type SalesOrder {
+  id: ID!
+  customer: String
+  referenceNumber: String
+  soldAt: String!
+  soldBy: String
+  lines: [SalesOrderLine!]!
+}
+
+type SalesOrderLine {
+  id: ID!
+  productId: ID!
+  sku: String!
+  productName: String!
+  quantity: Int!
+  unitPrice: Float!
+  deductions: [SalesDeduction!]!
+}
+
+type SalesDeduction {
+  id: ID!
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  quantity: Int!
+}
+
+type ExpiryAlert {
+  productId: ID!
+  sku: String!
+  productName: String!
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  qtyOnHand: Int!
+  daysToExpiry: Int!
+}
+
+type LowStockAlert {
+  productId: ID!
+  sku: String!
+  productName: String!
+  qtyOnHand: Int!
+  threshold: Int!
+}
+
+type LowStockBatchAlert {
+  productId: ID!
+  sku: String!
+  productName: String!
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  location: String!
+  qtyOnHand: Int!
+  threshold: Int!
+}
+
+type InventoryValuation {
+  totalStockValue: Float!
+}
+
+type DailySalesReport {
+  date: String!
+  totalSalesAmount: Float!
+  totalCostAmount: Float!
+  totalProfitAmount: Float!
+  items: [DailySalesReportItem!]!
+}
+
+type DailySalesReportItem {
+  productId: ID!
+  sku: String!
+  productName: String!
+  quantitySold: Int!
+  salesAmount: Float!
+  costAmount: Float!
+  profitAmount: Float!
+}
+
+type AuthPayload {
+  accessToken: String!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  roles: [String!]!
+}
+
+type AdminUser {
+  id: ID!
+  name: String!
+  email: String!
+  active: Boolean!
+  roles: [String!]!
+}
+
+type Category {
+  id: ID!
+  name: String!
+  description: String
+  active: Boolean!
+}
+
+type Product {
+  id: ID!
+  sku: String!
+  barcode: String
+  name: String!
+  brand: String
+  category: String
+  variant: String
+  unitOfMeasure: String
+  buyingPrice: Float
+  sellingPrice: Float
+  active: Boolean!
+  batches: [ProductBatch!]!
+}
+
+type ProductBatch {
+  id: ID!
+  productId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  costPrice: Float!
+  quantityReceived: Int!
+  createdAt: String!
+}
+
+type InventoryItem {
+  id: ID!
+  productId: ID!
+  sku: String!
+  productName: String!
+  unitOfMeasure: String
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  location: String!
+  qtyOnHand: Int!
+}
+
+type StockMovement {
+  id: ID!
+  type: String!
+  quantity: Int!
+  createdAt: String!
+  createdBy: String
+  note: String
+
+  batchId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  productId: ID!
+  sku: String!
+  productName: String!
+}
+
+input InventoryFilter {
+  query: String
+  productId: ID
+  includeZero: Boolean
+}
+
+input StockMovementFilter {
+  type: String
+  productId: ID
+  batchId: ID
+}
+
+input ProductFilter {
+  query: String
+  active: Boolean
+}
+
+input CategoryFilter {
+  query: String
+  active: Boolean
+}
+
+input CreateCategoryInput {
+  name: String!
+  description: String
+}
+
+input UpdateCategoryInput {
+  id: ID!
+  name: String
+  description: String
+  active: Boolean
+}
+
+input DeleteCategoryInput {
+  id: ID!
+}
+
+input CreateProductInput {
+  sku: String!
+  barcode: String
+  name: String!
+  brand: String
+  category: String
+  variant: String
+  unitOfMeasure: String
+  buyingPrice: Float
+  sellingPrice: Float
+}
+
+input UpdateProductInput {
+  id: ID!
+  sku: String
+  barcode: String
+  name: String
+  brand: String
+  category: String
+  variant: String
+  unitOfMeasure: String
+  buyingPrice: Float
+  sellingPrice: Float
+}
+
+input SetProductStatusInput {
+  id: ID!
+  active: Boolean!
+}
+
+input CreateBatchInput {
+  productId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  costPrice: Float!
+  quantityReceived: Int!
+  location: String
+}
+
+input UpdateBatchNumberInput {
+  batchId: ID!
+  batchNumber: String!
+}
+
+input CreateUserInput {
+  name: String!
+  email: String!
+  password: String!
+  roles: [String!]!
+}
+
+input SetUserActiveInput {
+  userId: ID!
+  active: Boolean!
+}
+
+input SetUserRolesInput {
+  userId: ID!
+  roles: [String!]!
+}
+
+input ResetUserPasswordInput {
+  userId: ID!
+  newPassword: String!
+}
+
+input ReceivePurchaseInput {
+  supplier: String
+  invoiceNumber: String
+  lines: [ReceivePurchaseLineInput!]!
+}
+
+input ReceivePurchaseLineInput {
+  productId: ID!
+  batchNumber: String!
+  expiryDate: String!
+  costPrice: Float!
+  quantityReceived: Int!
+}
+
+input CreateSaleInput {
+  customer: String
+  referenceNumber: String
+  lines: [CreateSaleLineInput!]!
+}
+
+input CreateSaleLineInput {
+  productId: ID!
+  quantity: Int!
+  unitPrice: Float!
+  location: String
+}
+
+input CreateMySaleInput {
+  customer: String
+  referenceNumber: String
+  lines: [CreateMySaleLineInput!]!
+}
+
+input UpdateMySaleInput {
+  id: ID!
+  customer: String
+  referenceNumber: String
+  lines: [CreateMySaleLineInput!]!
+}
+
+input DeleteMySaleInput {
+  id: ID!
+}
+
+input CreateMySaleLineInput {
+  productName: String!
+  quantity: Int!
+  unitPrice: Float!
+}
+
+input AdjustInventoryInput {
+  batchId: ID!
+  location: String
+  delta: Int!
+  note: String
+}
+
+input MovementAuditFilter {
+  type: String
+  from: String
+  to: String
+}
