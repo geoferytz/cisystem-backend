@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import graphql.schema.DataFetchingEnvironment;
 
+import java.util.NoSuchElementException;
+
 @Component
 public class GraphqlExceptionResolver extends DataFetcherExceptionResolverAdapter {
 	@Override
@@ -21,6 +23,20 @@ public class GraphqlExceptionResolver extends DataFetcherExceptionResolverAdapte
 			return GraphqlErrorBuilder.newError(env)
 					.message(root.getMessage())
 					.errorType(ErrorType.BAD_REQUEST)
+					.build();
+		}
+
+		if (root instanceof IllegalStateException) {
+			return GraphqlErrorBuilder.newError(env)
+					.message(root.getMessage())
+					.errorType(ErrorType.BAD_REQUEST)
+					.build();
+		}
+
+		if (root instanceof NoSuchElementException) {
+			return GraphqlErrorBuilder.newError(env)
+					.message("Not found")
+					.errorType(ErrorType.NOT_FOUND)
 					.build();
 		}
 

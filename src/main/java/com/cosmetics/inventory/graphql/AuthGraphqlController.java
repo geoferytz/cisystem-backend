@@ -27,9 +27,10 @@ public class AuthGraphqlController {
 
 	@MutationMapping
 	public AuthPayload login(@Argument LoginInput input) {
-		UserEntity user = userRepository.findByEmailIgnoreCase(input.email()).orElseThrow();
+		UserEntity user = userRepository.findByEmailIgnoreCase(input.email())
+				.orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 		if (!user.isActive()) {
-			throw new IllegalStateException("User is inactive");
+			throw new IllegalArgumentException("User is inactive");
 		}
 		if (!passwordEncoder.matches(input.password(), user.getPasswordHash())) {
 			throw new IllegalArgumentException("Invalid credentials");
