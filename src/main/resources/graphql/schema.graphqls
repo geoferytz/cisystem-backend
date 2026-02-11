@@ -12,6 +12,9 @@ type Query {
   users: [AdminUser!]!
   roles: [String!]!
 
+  userPermissions(userId: ID!): [UserPermission!]!
+  myPermissions: [UserPermission!]!
+
   purchaseOrders: [PurchaseOrder!]!
   salesOrders: [SalesOrder!]!
 
@@ -31,6 +34,8 @@ type Query {
 type Mutation {
   login(input: LoginInput!): AuthPayload!
 
+  changeMyPassword(input: ChangeMyPasswordInput!): Boolean!
+
   createCategory(input: CreateCategoryInput!): Category!
   updateCategory(input: UpdateCategoryInput!): Category!
   deleteCategory(input: DeleteCategoryInput!): Boolean!
@@ -46,6 +51,8 @@ type Mutation {
   setUserActive(input: SetUserActiveInput!): AdminUser!
   setUserRoles(input: SetUserRolesInput!): AdminUser!
   resetUserPassword(input: ResetUserPasswordInput!): AdminUser!
+
+  setUserPermissions(input: SetUserPermissionsInput!): [UserPermission!]!
 
   receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
   createSale(input: CreateSaleInput!): SalesOrder!
@@ -64,6 +71,27 @@ type MySale {
   customer: String
   referenceNumber: String
   lines: [MySaleLine!]!
+}
+
+type UserPermission {
+  module: String!
+  canView: Boolean!
+  canCreate: Boolean!
+  canEdit: Boolean!
+  canDelete: Boolean!
+}
+
+input PermissionInput {
+  module: String!
+  canView: Boolean!
+  canCreate: Boolean!
+  canEdit: Boolean!
+  canDelete: Boolean!
+}
+
+input SetUserPermissionsInput {
+  userId: ID!
+  permissions: [PermissionInput!]!
 }
 
 type MySaleLine {
@@ -181,6 +209,11 @@ type AuthPayload {
 input LoginInput {
   email: String!
   password: String!
+}
+
+input ChangeMyPasswordInput {
+  currentPassword: String!
+  newPassword: String!
 }
 
 type User {

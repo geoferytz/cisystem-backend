@@ -10,28 +10,36 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
+
 import java.util.List;
 
 @Controller
 public class PurchasingGraphqlController {
 	private final PurchasingService purchasingService;
 	private final PurchaseOrderRepository purchaseOrderRepository;
+	private final PermissionGuard permissionGuard;
 
-	public PurchasingGraphqlController(PurchasingService purchasingService, PurchaseOrderRepository purchaseOrderRepository) {
+	public PurchasingGraphqlController(PurchasingService purchasingService, PurchaseOrderRepository purchaseOrderRepository, PermissionGuard permissionGuard) {
 		this.purchasingService = purchasingService;
 		this.purchaseOrderRepository = purchaseOrderRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<PurchaseOrderDto> purchaseOrders() {
+	public List<PurchaseOrderDto> purchaseOrders(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.VIEW);
 		return purchaseOrderRepository.findAll().stream().map(PurchaseOrderDto::from).toList();
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public PurchaseOrderDto receivePurchase(@Argument ReceivePurchaseInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.CREATE);
 		var po = purchasingService.receivePurchase(
 				new PurchasingService.ReceivePurchaseCommand(
 						input.supplier(),

@@ -14,6 +14,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
+
 import java.util.List;
 
 @Controller
@@ -21,17 +25,20 @@ public class InventoryGraphqlController {
 	private final InventoryRepository inventoryRepository;
 	private final ProductBatchRepository batchRepository;
 	private final StockMovementRepository stockMovementRepository;
+	private final PermissionGuard permissionGuard;
 
-	public InventoryGraphqlController(InventoryRepository inventoryRepository, ProductBatchRepository batchRepository, StockMovementRepository stockMovementRepository) {
+	public InventoryGraphqlController(InventoryRepository inventoryRepository, ProductBatchRepository batchRepository, StockMovementRepository stockMovementRepository, PermissionGuard permissionGuard) {
 		this.inventoryRepository = inventoryRepository;
 		this.batchRepository = batchRepository;
 		this.stockMovementRepository = stockMovementRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<InventoryItemDto> inventory(@Argument InventoryFilter filter) {
+	public List<InventoryItemDto> inventory(@Argument InventoryFilter filter, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.INVENTORY, PermissionsService.PermissionAction.VIEW);
 		boolean includeZero = filter != null && Boolean.TRUE.equals(filter.includeZero());
 		String query = filter != null ? filter.query() : null;
 		Long productId = filter != null ? filter.productId() : null;
@@ -55,6 +62,7 @@ public class InventoryGraphqlController {
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	@Transactional
 	public InventoryItemDto adjustInventory(@Argument AdjustInventoryInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.INVENTORY, PermissionsService.PermissionAction.EDIT);
 		String location = (input.location() != null && !input.location().isBlank()) ? input.location().trim() : "MAIN";
 		var batch = batchRepository.findById(input.batchId()).orElseThrow();
 

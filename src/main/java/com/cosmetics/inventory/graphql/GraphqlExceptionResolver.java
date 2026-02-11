@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import graphql.schema.DataFetchingEnvironment;
 
 import java.util.NoSuchElementException;
+import org.springframework.security.access.AccessDeniedException;
 
 @Component
 public class GraphqlExceptionResolver extends DataFetcherExceptionResolverAdapter {
@@ -37,6 +38,13 @@ public class GraphqlExceptionResolver extends DataFetcherExceptionResolverAdapte
 			return GraphqlErrorBuilder.newError(env)
 					.message("Not found")
 					.errorType(ErrorType.NOT_FOUND)
+					.build();
+		}
+
+		if (root instanceof AccessDeniedException) {
+			return GraphqlErrorBuilder.newError(env)
+					.message("Forbidden")
+					.errorType(ErrorType.FORBIDDEN)
 					.build();
 		}
 

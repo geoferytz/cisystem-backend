@@ -7,7 +7,12 @@ import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
 
 import java.util.List;
 
@@ -15,15 +20,18 @@ import java.util.List;
 public class CategoryGraphqlController {
 	private final CategoryService categoryService;
 	private final CategoryRepository categoryRepository;
+	private final PermissionGuard permissionGuard;
 
-	public CategoryGraphqlController(CategoryService categoryService, CategoryRepository categoryRepository) {
+	public CategoryGraphqlController(CategoryService categoryService, CategoryRepository categoryRepository, PermissionGuard permissionGuard) {
 		this.categoryService = categoryService;
 		this.categoryRepository = categoryRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
-	public List<CategoryEntity> categories(@Argument CategoryFilter filter) {
+	public List<CategoryEntity> categories(@Argument CategoryFilter filter, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.CATEGORIES, PermissionsService.PermissionAction.VIEW);
 		String query = filter != null ? filter.query() : null;
 		Boolean active = filter != null ? filter.active() : null;
 		return categoryService.findCategories(query, active);
@@ -31,13 +39,15 @@ public class CategoryGraphqlController {
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
-	public CategoryEntity category(@Argument long id) {
+	public CategoryEntity category(@Argument long id, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.CATEGORIES, PermissionsService.PermissionAction.VIEW);
 		return categoryRepository.findById(id).orElse(null);
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public CategoryEntity createCategory(@Argument CreateCategoryInput input) {
+	public CategoryEntity createCategory(@Argument CreateCategoryInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.CATEGORIES, PermissionsService.PermissionAction.CREATE);
 		return categoryService.createCategory(new CategoryService.CreateCategoryCommand(
 				input.name(),
 				input.description()
@@ -46,7 +56,8 @@ public class CategoryGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public CategoryEntity updateCategory(@Argument UpdateCategoryInput input) {
+	public CategoryEntity updateCategory(@Argument UpdateCategoryInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.CATEGORIES, PermissionsService.PermissionAction.EDIT);
 		return categoryService.updateCategory(new CategoryService.UpdateCategoryCommand(
 				input.id(),
 				input.name(),
@@ -57,7 +68,8 @@ public class CategoryGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public boolean deleteCategory(@Argument DeleteCategoryInput input) {
+	public boolean deleteCategory(@Argument DeleteCategoryInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.CATEGORIES, PermissionsService.PermissionAction.DELETE);
 		return categoryService.deleteCategory(input.id());
 	}
 

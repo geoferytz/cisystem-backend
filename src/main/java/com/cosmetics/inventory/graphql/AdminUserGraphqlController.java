@@ -5,10 +5,14 @@ import com.cosmetics.inventory.user.RoleName;
 import com.cosmetics.inventory.user.RoleRepository;
 import com.cosmetics.inventory.user.UserEntity;
 import com.cosmetics.inventory.user.UserRepository;
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,30 +25,35 @@ public class AdminUserGraphqlController {
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final PermissionGuard permissionGuard;
 
-	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder) {
+	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, PermissionGuard permissionGuard) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
 		this.passwordEncoder = passwordEncoder;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<AdminUserDto> users() {
+	public List<AdminUserDto> users(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
 		return userRepository.findAll().stream().map(AdminUserDto::from).toList();
 	}
 
 	@QueryMapping
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<String> roles() {
+	public List<String> roles(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
 		return List.of(RoleName.values()).stream().map(Enum::name).toList();
 	}
 
 	@MutationMapping
-	@PreAuthorize("hasRole('ADMIN')")
-	public AdminUserDto createUser(@Argument CreateUserInput input) {
+	@PreAuthorize("isAuthenticated()")
+	public AdminUserDto createUser(Authentication authentication, @Argument CreateUserInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.CREATE);
 		userRepository.findByEmailIgnoreCase(input.email()).ifPresent(u -> {
 			throw new IllegalArgumentException("Email already exists");
 		});
@@ -59,24 +68,27 @@ public class AdminUserGraphqlController {
 	}
 
 	@MutationMapping
-	@PreAuthorize("hasRole('ADMIN')")
-	public AdminUserDto setUserActive(@Argument SetUserActiveInput input) {
+	@PreAuthorize("isAuthenticated()")
+	public AdminUserDto setUserActive(Authentication authentication, @Argument SetUserActiveInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
 		UserEntity user = userRepository.findById(input.userId()).orElseThrow();
 		user.setActive(input.active());
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
 	@MutationMapping
-	@PreAuthorize("hasRole('ADMIN')")
-	public AdminUserDto setUserRoles(@Argument SetUserRolesInput input) {
+	@PreAuthorize("isAuthenticated()")
+	public AdminUserDto setUserRoles(Authentication authentication, @Argument SetUserRolesInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
 		UserEntity user = userRepository.findById(input.userId()).orElseThrow();
 		user.setRoles(resolveRoles(input.roles()));
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
 	@MutationMapping
-	@PreAuthorize("hasRole('ADMIN')")
-	public AdminUserDto resetUserPassword(@Argument ResetUserPasswordInput input) {
+	@PreAuthorize("isAuthenticated()")
+	public AdminUserDto resetUserPassword(Authentication authentication, @Argument ResetUserPasswordInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
 		if (input.newPassword() == null || input.newPassword().isBlank()) {
 			throw new IllegalArgumentException("Password is required");
 		}

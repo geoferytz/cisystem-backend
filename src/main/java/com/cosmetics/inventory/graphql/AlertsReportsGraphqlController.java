@@ -3,9 +3,13 @@ package com.cosmetics.inventory.graphql;
 import com.cosmetics.inventory.inventory.InventoryRepository;
 import com.cosmetics.inventory.sales.SalesOrderRepository;
 import com.cosmetics.inventory.stockmovement.StockMovementRepository;
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,11 +27,18 @@ public class AlertsReportsGraphqlController {
 	private final InventoryRepository inventoryRepository;
 	private final StockMovementRepository stockMovementRepository;
 	private final SalesOrderRepository salesOrderRepository;
+	private final PermissionGuard permissionGuard;
 
-	public AlertsReportsGraphqlController(InventoryRepository inventoryRepository, StockMovementRepository stockMovementRepository, SalesOrderRepository salesOrderRepository) {
+	public AlertsReportsGraphqlController(
+			InventoryRepository inventoryRepository,
+			StockMovementRepository stockMovementRepository,
+			SalesOrderRepository salesOrderRepository,
+			PermissionGuard permissionGuard
+	) {
 		this.inventoryRepository = inventoryRepository;
 		this.stockMovementRepository = stockMovementRepository;
 		this.salesOrderRepository = salesOrderRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
@@ -62,7 +73,8 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public DailySalesReportDto dailySalesReport(@Argument String date) {
+	public DailySalesReportDto dailySalesReport(Authentication authentication, @Argument String date) {
+		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
 		LocalDate day = LocalDate.parse(date);
 		Instant from = day.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant to = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -182,7 +194,8 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public InventoryValuationDto inventoryValuation() {
+	public InventoryValuationDto inventoryValuation(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
 		double total = inventoryRepository.findAll().stream()
 				.filter(i -> i.getQtyOnHand() > 0)
 				.mapToDouble(i -> i.getQtyOnHand() * i.getBatch().getCostPrice().doubleValue())
@@ -193,7 +206,8 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<StockMovementDto> movementAuditReport(@Argument MovementAuditFilter filter) {
+	public List<StockMovementDto> movementAuditReport(Authentication authentication, @Argument MovementAuditFilter filter) {
+		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
 		String type = filter != null ? filter.type() : null;
 		Instant from = filter != null && filter.from() != null && !filter.from().isBlank()
 				? Instant.parse(filter.from())

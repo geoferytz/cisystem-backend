@@ -13,6 +13,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
+
 import java.util.List;
 
 @Controller
@@ -20,16 +24,19 @@ public class ProductGraphqlController {
 	private final ProductService productService;
 	private final ProductRepository productRepository;
 	private final ProductBatchRepository batchRepository;
+	private final PermissionGuard permissionGuard;
 
-	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository) {
+	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository, PermissionGuard permissionGuard) {
 		this.productService = productService;
 		this.productRepository = productRepository;
 		this.batchRepository = batchRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
-	public List<ProductEntity> products(@Argument ProductFilter filter) {
+	public List<ProductEntity> products(@Argument ProductFilter filter, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.VIEW);
 		String query = filter != null ? filter.query() : null;
 		Boolean active = filter != null ? filter.active() : null;
 		return productService.findProducts(query, active);
@@ -37,13 +44,15 @@ public class ProductGraphqlController {
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
-	public ProductEntity product(@Argument long id) {
+	public ProductEntity product(@Argument long id, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.VIEW);
 		return productRepository.findById(id).orElse(null);
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public ProductEntity createProduct(@Argument CreateProductInput input) {
+	public ProductEntity createProduct(@Argument CreateProductInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.CREATE);
 		return productService.createProduct(new ProductService.CreateProductCommand(
 				input.sku(),
 				input.barcode(),
@@ -59,7 +68,8 @@ public class ProductGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public ProductEntity updateProduct(@Argument UpdateProductInput input) {
+	public ProductEntity updateProduct(@Argument UpdateProductInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.EDIT);
 		return productService.updateProduct(new ProductService.UpdateProductCommand(
 				input.id(),
 				input.sku(),
@@ -76,13 +86,15 @@ public class ProductGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public ProductEntity setProductStatus(@Argument SetProductStatusInput input) {
+	public ProductEntity setProductStatus(@Argument SetProductStatusInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.EDIT);
 		return productService.setProductStatus(input.id(), input.active());
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public ProductBatchEntity createBatch(@Argument CreateBatchInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.CREATE);
 		return productService.createBatch(new ProductService.CreateBatchCommand(
 				input.productId(),
 				input.batchNumber(),
@@ -95,13 +107,15 @@ public class ProductGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
-	public ProductBatchEntity updateBatchNumber(@Argument UpdateBatchNumberInput input) {
+	public ProductBatchEntity updateBatchNumber(@Argument UpdateBatchNumberInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.EDIT);
 		return productService.updateBatchNumber(input.batchId(), input.batchNumber());
 	}
 
 	@SchemaMapping(typeName = "Product", field = "batches")
 	@PreAuthorize("isAuthenticated()")
-	public List<ProductBatchEntity> batches(ProductEntity product) {
+	public List<ProductBatchEntity> batches(ProductEntity product, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.VIEW);
 		return batchRepository.findByProductIdOrderByExpiryDateAscCreatedAtAsc(product.getId());
 	}
 

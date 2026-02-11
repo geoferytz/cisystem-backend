@@ -41,6 +41,19 @@ public class AuthGraphqlController {
 		return new AuthPayload(token);
 	}
 
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	public boolean changeMyPassword(@Argument ChangeMyPasswordInput input, Authentication authentication) {
+		String email = (String) authentication.getPrincipal();
+		UserEntity user = userRepository.findByEmailIgnoreCase(email).orElseThrow();
+		if (!passwordEncoder.matches(input.currentPassword(), user.getPasswordHash())) {
+			throw new IllegalArgumentException("Invalid current password");
+		}
+		user.setPasswordHash(passwordEncoder.encode(input.newPassword()));
+		userRepository.save(user);
+		return true;
+	}
+
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	public UserDto me(Authentication authentication) {
@@ -50,6 +63,9 @@ public class AuthGraphqlController {
 	}
 
 	public record LoginInput(String email, String password) {
+	}
+
+	public record ChangeMyPasswordInput(String currentPassword, String newPassword) {
 	}
 
 	public record AuthPayload(String accessToken) {

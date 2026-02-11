@@ -10,28 +10,36 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cosmetics.inventory.user.PermissionGuard;
+import com.cosmetics.inventory.user.PermissionModule;
+import com.cosmetics.inventory.user.PermissionsService;
+
 import java.util.List;
 
 @Controller
 public class SalesGraphqlController {
 	private final SalesService salesService;
 	private final SalesOrderRepository salesOrderRepository;
+	private final PermissionGuard permissionGuard;
 
-	public SalesGraphqlController(SalesService salesService, SalesOrderRepository salesOrderRepository) {
+	public SalesGraphqlController(SalesService salesService, SalesOrderRepository salesOrderRepository, PermissionGuard permissionGuard) {
 		this.salesService = salesService;
 		this.salesOrderRepository = salesOrderRepository;
+		this.permissionGuard = permissionGuard;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<SalesOrderDto> salesOrders() {
+	public List<SalesOrderDto> salesOrders(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.VIEW);
 		return salesOrderRepository.findAll().stream().map(SalesOrderDto::from).toList();
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public SalesOrderDto createSale(@Argument CreateSaleInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.CREATE);
 		var so = salesService.createSale(
 				new SalesService.CreateSaleCommand(
 						input.customer(),
