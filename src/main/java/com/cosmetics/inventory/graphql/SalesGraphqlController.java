@@ -56,9 +56,43 @@ public class SalesGraphqlController {
 		return SalesOrderDto.from(so);
 	}
 
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	public SalesOrderDto updateSale(@Argument UpdateSaleInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.EDIT);
+		var so = salesService.updateSale(
+				new SalesService.UpdateSaleCommand(
+						input.id(),
+						input.customer(),
+						input.referenceNumber(),
+						input.lines().stream().map(l -> new SalesService.CreateSaleLineCommand(
+								l.productId(),
+								l.quantity(),
+								l.unitPrice(),
+								l.location()
+						)).toList()
+				),
+			authentication
+		);
+		return SalesOrderDto.from(so);
+	}
+
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	public boolean deleteSale(@Argument DeleteSaleInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.DELETE);
+		return salesService.deleteSale(input.id(), authentication);
+	}
+
 	public record CreateSaleInput(String customer, String referenceNumber, List<CreateSaleLineInput> lines) {
 	}
 
 	public record CreateSaleLineInput(long productId, int quantity, double unitPrice, String location) {
+	}
+
+	public record UpdateSaleInput(long id, String customer, String referenceNumber, List<CreateSaleLineInput> lines) {
+	}
+
+	public record DeleteSaleInput(long id) {
 	}
 }

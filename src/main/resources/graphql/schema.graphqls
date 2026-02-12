@@ -29,6 +29,9 @@ type Query {
   movementAuditReport(filter: MovementAuditFilter): [StockMovement!]!
 
   dailySalesReport(date: String!): DailySalesReport!
+
+  expenseCategories(filter: ExpenseCategoryFilter): [ExpenseCategory!]!
+  expenses(filter: ExpenseFilter): [Expense!]!
 }
 
 type Mutation {
@@ -55,13 +58,90 @@ type Mutation {
   setUserPermissions(input: SetUserPermissionsInput!): [UserPermission!]!
 
   receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
+  updatePurchase(input: UpdatePurchaseInput!): PurchaseOrder!
+  deletePurchase(input: DeletePurchaseInput!): Boolean!
   createSale(input: CreateSaleInput!): SalesOrder!
+  updateSale(input: UpdateSaleInput!): SalesOrder!
+  deleteSale(input: DeleteSaleInput!): Boolean!
 
   createMySale(input: CreateMySaleInput!): MySale!
   updateMySale(input: UpdateMySaleInput!): MySale!
   deleteMySale(input: DeleteMySaleInput!): Boolean!
 
   adjustInventory(input: AdjustInventoryInput!): InventoryItem!
+
+  createExpenseCategory(input: CreateExpenseCategoryInput!): ExpenseCategory!
+  updateExpenseCategory(input: UpdateExpenseCategoryInput!): ExpenseCategory!
+  deleteExpenseCategory(input: DeleteExpenseCategoryInput!): Boolean!
+
+  createExpense(input: CreateExpenseInput!): Expense!
+  updateExpense(input: UpdateExpenseInput!): Expense!
+  deleteExpense(input: DeleteExpenseInput!): Boolean!
+}
+
+input ExpenseCategoryFilter {
+  query: String
+  active: Boolean
+}
+
+input ExpenseFilter {
+  from: String
+  to: String
+}
+
+type ExpenseCategory {
+  id: ID!
+  name: String!
+  description: String
+  active: Boolean!
+}
+
+type Expense {
+  id: ID!
+  date: String!
+  category: ExpenseCategory!
+  description: String
+  amount: Float!
+  paymentMethod: String!
+  createdAt: String!
+  createdBy: String
+}
+
+input CreateExpenseCategoryInput {
+  name: String!
+  description: String
+}
+
+input UpdateExpenseCategoryInput {
+  id: ID!
+  name: String
+  description: String
+  active: Boolean
+}
+
+input DeleteExpenseCategoryInput {
+  id: ID!
+}
+
+input CreateExpenseInput {
+  date: String
+  categoryId: ID!
+  description: String
+  amount: Float!
+  paymentMethod: String!
+}
+
+input UpdateExpenseInput {
+  id: ID!
+  date: String
+  categoryId: ID
+  description: String
+  amount: Float
+  paymentMethod: String
+}
+
+input DeleteExpenseInput {
+  id: ID!
 }
 
 type MySale {
@@ -137,6 +217,7 @@ type SalesOrderLine {
   sku: String!
   productName: String!
   quantity: Int!
+  location: String!
   unitPrice: Float!
   deductions: [SalesDeduction!]!
 }
@@ -402,6 +483,17 @@ input ReceivePurchaseInput {
   lines: [ReceivePurchaseLineInput!]!
 }
 
+input UpdatePurchaseInput {
+  id: ID!
+  supplier: String
+  invoiceNumber: String
+  lines: [ReceivePurchaseLineInput!]!
+}
+
+input DeletePurchaseInput {
+  id: ID!
+}
+
 input ReceivePurchaseLineInput {
   productId: ID!
   batchNumber: String!
@@ -414,6 +506,17 @@ input CreateSaleInput {
   customer: String
   referenceNumber: String
   lines: [CreateSaleLineInput!]!
+}
+
+input UpdateSaleInput {
+  id: ID!
+  customer: String
+  referenceNumber: String
+  lines: [CreateSaleLineInput!]!
+}
+
+input DeleteSaleInput {
+  id: ID!
 }
 
 input CreateSaleLineInput {

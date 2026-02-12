@@ -7,11 +7,19 @@ FROM maven:3.9.9-eclipse-temurin-21 AS builder
 
 WORKDIR /build
 
+ENV MAVEN_OPTS="-Dmaven.wagon.httpconnectionManager.ttlSeconds=120 -Dmaven.wagon.http.retryHandler.count=3 -Dmaven.wagon.http.connectionTimeout=60000 -Dmaven.wagon.http.readTimeout=600000"
+
+# copy pom first to leverage Docker layer cache
+COPY pom.xml .
+
+# download dependencies (more resilient in flaky networks)
+RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests dependency:go-offline
+
 # copy project files
 COPY . .
 
 # build jar
-RUN mvn clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests
 
 
 # ---------- STAGE 2 : RUNTIME ----------

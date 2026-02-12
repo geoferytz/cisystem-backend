@@ -25,6 +25,9 @@ public class SalesOrderLineEntity {
 	@Column(nullable = false)
 	private int quantity;
 
+	@Column(length = 120)
+	private String location = "MAIN";
+
 	@Column(nullable = false, precision = 19, scale = 4)
 	private BigDecimal unitPrice;
 
@@ -57,6 +60,14 @@ public class SalesOrderLineEntity {
 
 	public void setQuantity(int quantity) {
 		this.quantity = quantity;
+	}
+
+	public String getLocation() {
+		return location;
+	}
+
+	public void setLocation(String location) {
+		this.location = location;
 	}
 
 	public BigDecimal getUnitPrice() {

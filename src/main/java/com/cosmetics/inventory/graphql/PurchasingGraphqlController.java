@@ -57,10 +57,45 @@ public class PurchasingGraphqlController {
 		return PurchaseOrderDto.from(po);
 	}
 
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	public PurchaseOrderDto updatePurchase(@Argument UpdatePurchaseInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.EDIT);
+		var po = purchasingService.updatePurchase(
+				new PurchasingService.UpdatePurchaseCommand(
+						input.id(),
+						input.supplier(),
+						input.invoiceNumber(),
+						input.lines().stream().map(l -> new PurchasingService.ReceivePurchaseLineCommand(
+								l.productId(),
+								l.batchNumber(),
+								l.expiryDate(),
+								l.costPrice(),
+								l.quantityReceived()
+						)).toList()
+				),
+			authentication
+		);
+		return PurchaseOrderDto.from(po);
+	}
+
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	public boolean deletePurchase(@Argument DeletePurchaseInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.DELETE);
+		return purchasingService.deletePurchase(input.id(), authentication);
+	}
+
 	public record ReceivePurchaseInput(String supplier, String invoiceNumber, List<ReceivePurchaseLineInput> lines) {
 	}
 
 	public record ReceivePurchaseLineInput(long productId, String batchNumber, String expiryDate, double costPrice,
 													 int quantityReceived) {
+	}
+
+	public record UpdatePurchaseInput(long id, String supplier, String invoiceNumber, List<ReceivePurchaseLineInput> lines) {
+	}
+
+	public record DeletePurchaseInput(long id) {
 	}
 }

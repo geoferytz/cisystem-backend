@@ -8,6 +8,8 @@ public enum PermissionModule {
 	SALES,
 	MY_SALES,
 	PURCHASING,
+	EXPENSES,
+	EXPENSE_CATEGORIES,
 	REPORTS,
 	USERS_ROLES
 }
