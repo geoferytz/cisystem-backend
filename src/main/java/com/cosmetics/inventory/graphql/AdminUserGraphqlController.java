@@ -62,9 +62,40 @@ public class AdminUserGraphqlController {
 		user.setName(input.name().trim());
 		user.setEmail(input.email().trim());
 		user.setPasswordHash(passwordEncoder.encode(input.password()));
+		user.setPlainPassword(input.password());
 		user.setActive(true);
 		user.setRoles(resolveRoles(input.roles()));
 		return AdminUserDto.from(userRepository.save(user));
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	public AdminUserDto updateUser(Authentication authentication, @Argument UpdateUserInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
+		UserEntity user = userRepository.findById(input.userId()).orElseThrow();
+		user.setName(input.name().trim());
+		String newEmail = input.email().trim();
+		if (!user.getEmail().equalsIgnoreCase(newEmail)) {
+			userRepository.findByEmailIgnoreCase(newEmail).ifPresent(u -> {
+				throw new IllegalArgumentException("Email already exists");
+			});
+			user.setEmail(newEmail);
+		}
+		if (input.password() != null && !input.password().isBlank()) {
+			user.setPasswordHash(passwordEncoder.encode(input.password()));
+			user.setPlainPassword(input.password());
+		}
+		user.setRoles(resolveRoles(input.roles()));
+		return AdminUserDto.from(userRepository.save(user));
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	public boolean deleteUser(Authentication authentication, @Argument long userId) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.DELETE);
+		UserEntity user = userRepository.findById(userId).orElseThrow();
+		userRepository.delete(user);
+		return true;
 	}
 
 	@MutationMapping
@@ -94,6 +125,7 @@ public class AdminUserGraphqlController {
 		}
 		UserEntity user = userRepository.findById(input.userId()).orElseThrow();
 		user.setPasswordHash(passwordEncoder.encode(input.newPassword()));
+		user.setPlainPassword(input.newPassword());
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
@@ -110,6 +142,9 @@ public class AdminUserGraphqlController {
 	}
 
 	public record CreateUserInput(String name, String email, String password, List<String> roles) {
+	}
+
+	public record UpdateUserInput(long userId, String name, String email, String password, List<String> roles) {
 	}
 
 	public record SetUserActiveInput(long userId, boolean active) {

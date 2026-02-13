@@ -21,6 +21,9 @@ public class UserEntity {
 	@Column(nullable = false, length = 200)
 	private String passwordHash;
 
+	@Column(length = 200)
+	private String plainPassword;
+
 	@Column(nullable = false)
 	private boolean active = true;
 
@@ -58,6 +61,14 @@ public class UserEntity {
 
 	public void setPasswordHash(String passwordHash) {
 		this.passwordHash = passwordHash;
+	}
+
+	public String getPlainPassword() {
+		return plainPassword;
+	}
+
+	public void setPlainPassword(String plainPassword) {
+		this.plainPassword = plainPassword;
 	}
 
 	public boolean isActive() {

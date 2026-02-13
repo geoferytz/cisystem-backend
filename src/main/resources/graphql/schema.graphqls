@@ -51,6 +51,8 @@ type Mutation {
   updateBatchNumber(input: UpdateBatchNumberInput!): ProductBatch!
 
   createUser(input: CreateUserInput!): AdminUser!
+  updateUser(input: UpdateUserInput!): AdminUser!
+  deleteUser(userId: ID!): Boolean!
   setUserActive(input: SetUserActiveInput!): AdminUser!
   setUserRoles(input: SetUserRolesInput!): AdminUser!
   resetUserPassword(input: ResetUserPasswordInput!): AdminUser!
@@ -308,6 +310,7 @@ type AdminUser {
   id: ID!
   name: String!
   email: String!
+  plainPassword: String
   active: Boolean!
   roles: [String!]!
 }
@@ -459,6 +462,14 @@ input CreateUserInput {
   name: String!
   email: String!
   password: String!
+  roles: [String!]!
+}
+
+input UpdateUserInput {
+  userId: ID!
+  name: String!
+  email: String!
+  password: String
   roles: [String!]!
 }
 

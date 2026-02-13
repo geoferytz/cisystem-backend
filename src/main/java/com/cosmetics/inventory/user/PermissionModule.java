@@ -11,5 +11,6 @@ public enum PermissionModule {
 	EXPENSES,
 	EXPENSE_CATEGORIES,
 	REPORTS,
+	PROFIT_MANAGEMENT,
 	USERS_ROLES
 }

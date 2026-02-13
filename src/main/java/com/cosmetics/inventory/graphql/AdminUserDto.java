@@ -8,6 +8,7 @@ public record AdminUserDto(
 		Long id,
 		String name,
 		String email,
+		String plainPassword,
 		boolean active,
 		List<String> roles
 ) {
@@ -16,6 +17,7 @@ public record AdminUserDto(
 				user.getId(),
 				user.getName(),
 				user.getEmail(),
+				user.getPlainPassword(),
 				user.isActive(),
 				user.getRoles().stream().map(r -> r.getName().name()).toList()
 		);
