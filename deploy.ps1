@@ -136,8 +136,9 @@ try {
             docker build --build-arg "APP_VERSION=$newVersion" --label "org.opencontainers.image.revision=$revision" -t $image .
         }
 
-        # The image must at least start its JVM with the real entrypoint before it is pushed.
-        Invoke-Checked "java -version ndani ya image imeshindwa" { docker run --rm $image -version }
+        # JVM check inside the image before it is pushed. --entrypoint java overrides
+        # "java -jar app.jar" - tunapima JVM tu, sio app (app ingeangalia DB isiyopo hapa).
+        Invoke-Checked "java -version ndani ya image imeshindwa" { docker run --rm --entrypoint java $image -version }
 
         # -- PUSH (exact tag only; Docker Hub sometimes times out -> retry) --
         Step "docker push $image ..."
