@@ -87,8 +87,10 @@ if ! $COMPOSE up -d --force-recreate "$SERVICE" >/dev/null; then
 else
     CID=$($COMPOSE ps -q "$SERVICE" 2>/dev/null | head -1)
     if [ -n "$CID" ] && wait_healthy "$CID"; then
-        say "DEPLOY_OK $VERSION (container $CID)"
+        say "container $CID imekubalika"
         docker logs "$CID" --tail 15 2>&1 | sed 's/^/    /'
+        # Lazima iwe line yenyewe bila prefix - deploy.ps1 inaitafuta hasa hivi.
+        echo "DEPLOY_OK $VERSION"
         exit 0
     fi
     say "Health check IMESHINDWA - container hajathibitisha 'Started ...Application' ndani ya ${TIMEOUT}s."
