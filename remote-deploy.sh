@@ -6,16 +6,44 @@ set -u
 
 VERSION="$1"
 IMAGE="geofrey2025/cisystem-backend:${VERSION}"
-# BADILISHA: dir iliyo na docker-compose.yml + .env + .env.backend + .env.frontend kwenye Contabo.
-DIR="/root/deployment"
-ENV_FILE="$DIR/.env.backend"
-COMPOSE="docker compose --env-file .env --env-file .env.backend --env-file .env.frontend"
 SERVICE="backend"
 TIMEOUT=120   # seconds to wait for Spring Boot to report "Started ...Application"
 
+say() { echo "[backend] $*"; }
+
+# --- Tafuta deployment dir -------------------------------------------------
+# 1) Kama container ya backend inarun sasa, compose iliiwekea label yenye dir halisi.
+#    Hii ndiyo njia ya uhakika zaidi - hakuna kubahatisha path.
+DIR=""
+CID_OLD=$(docker ps -q --filter "label=com.docker.compose.service=$SERVICE" | head -1)
+if [ -n "$CID_OLD" ]; then
+    DIR=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$CID_OLD" 2>/dev/null)
+    [ -n "$DIR" ] && say "Deployment dir (kutoka container inayorun): $DIR"
+fi
+# 2) Fallback: tafuta docker-compose file kwenye maeneo ya kawaida.
+if [ -z "$DIR" ]; then
+    for d in /root /root/deployment /root/cisystem /opt/deployment /opt/cisystem /srv/deployment /home/*/deployment; do
+        if ls "$d"/docker-compose.yml "$d"/docker-compose.yaml "$d"/compose.yml "$d"/compose.yaml >/dev/null 2>&1; then
+            DIR="$d"; say "Deployment dir (imepatikana kwa kutafuta): $DIR"; break
+        fi
+    done
+fi
+if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
+    say "FATAL: sijaona deployment dir yenye docker-compose.yml. Weka DIR=... kwenye script hii."
+    exit 1
+fi
+
+ENV_FILE="$DIR/.env.backend"
+
 cd "$DIR" || { echo "[backend] FATAL: $DIR haipo"; exit 1; }
 
-say() { echo "[backend] $*"; }
+# Jenga env-file args kutoka files zilizopo tu - kama .env.frontend haipo Contabo,
+# kuitaja kwenye --env-file kungesababisha compose ifail kabla hata ya pull.
+COMPOSE="docker compose"
+for ef in .env .env.backend .env.frontend; do
+    [ -f "$ef" ] && COMPOSE="$COMPOSE --env-file $ef"
+done
+say "Compose env files: $COMPOSE"
 
 # Previous version ("" on the very first deploy - rollback is then impossible, only report).
 PREV=""
