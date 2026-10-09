@@ -23,9 +23,9 @@ fi
 # 2) Fallback: tafuta docker-compose file kwenye maeneo ya kawaida.
 if [ -z "$DIR" ]; then
     for d in /root /root/deployment /root/cisystem /opt/deployment /opt/cisystem /srv/deployment /home/*/deployment; do
-        if ls "$d"/docker-compose.yml "$d"/docker-compose.yaml "$d"/compose.yml "$d"/compose.yaml >/dev/null 2>&1; then
-            DIR="$d"; say "Deployment dir (imepatikana kwa kutafuta): $DIR"; break
-        fi
+        for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+            if [ -f "$d/$f" ]; then DIR="$d"; say "Deployment dir (imepatikana kwa kutafuta): $DIR"; break 2; fi
+        done
     done
 fi
 if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
