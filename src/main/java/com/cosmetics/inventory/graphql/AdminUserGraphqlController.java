@@ -1,5 +1,7 @@
 package com.cosmetics.inventory.graphql;
 
+import com.cosmetics.inventory.branch.BranchEntity;
+import com.cosmetics.inventory.branch.BranchRepository;
 import com.cosmetics.inventory.user.RoleEntity;
 import com.cosmetics.inventory.user.RoleName;
 import com.cosmetics.inventory.user.RoleRepository;
@@ -26,12 +28,14 @@ public class AdminUserGraphqlController {
 	private final RoleRepository roleRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final PermissionGuard permissionGuard;
+	private final BranchRepository branchRepository;
 
-	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, PermissionGuard permissionGuard) {
+	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, PermissionGuard permissionGuard, BranchRepository branchRepository) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.permissionGuard = permissionGuard;
+		this.branchRepository = branchRepository;
 	}
 
 	@QueryMapping
@@ -65,6 +69,7 @@ public class AdminUserGraphqlController {
 		user.setPlainPassword(input.password());
 		user.setActive(true);
 		user.setRoles(resolveRoles(input.roles()));
+		user.setBranch(resolveBranch(input.branchId()));
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
@@ -86,6 +91,7 @@ public class AdminUserGraphqlController {
 			user.setPlainPassword(input.password());
 		}
 		user.setRoles(resolveRoles(input.roles()));
+		user.setBranch(resolveBranch(input.branchId()));
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
@@ -141,10 +147,17 @@ public class AdminUserGraphqlController {
 				.collect(java.util.stream.Collectors.toSet());
 	}
 
-	public record CreateUserInput(String name, String email, String password, List<String> roles) {
+	private BranchEntity resolveBranch(Long branchId) {
+		if (branchId == null) {
+			return null;
+		}
+		return branchRepository.findById(branchId).orElseThrow(() -> new IllegalArgumentException("Branch not found"));
 	}
 
-	public record UpdateUserInput(long userId, String name, String email, String password, List<String> roles) {
+	public record CreateUserInput(String name, String email, String password, List<String> roles, Long branchId) {
+	}
+
+	public record UpdateUserInput(long userId, String name, String email, String password, List<String> roles, Long branchId) {
 	}
 
 	public record SetUserActiveInput(long userId, boolean active) {

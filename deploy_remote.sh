@@ -14,6 +14,10 @@ echo "=== Running containers ==="
 docker ps --filter name=backend
 
 echo "=== Last backend logs ==="
-docker ps --filter "name=backend" --format "{{.Names}}" | while read cname; do
+container_name=
+
+if [ -n "" ]; then
     docker logs "" --tail 40
-done
+else
+    echo "Backend container not found"
+fi

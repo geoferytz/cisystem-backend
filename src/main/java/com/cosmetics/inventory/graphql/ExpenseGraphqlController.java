@@ -6,6 +6,7 @@ import com.cosmetics.inventory.expense.ExpenseCategoryService;
 import com.cosmetics.inventory.expense.ExpenseEntity;
 import com.cosmetics.inventory.expense.ExpenseService;
 import com.cosmetics.inventory.expense.ExpensePaymentMethod;
+import com.cosmetics.inventory.branch.BranchScope;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionsService;
@@ -26,12 +27,14 @@ public class ExpenseGraphqlController {
 	private final ExpenseCategoryRepository expenseCategoryRepository;
 	private final ExpenseService expenseService;
 	private final PermissionGuard permissionGuard;
+	private final BranchScope branchScope;
 
-	public ExpenseGraphqlController(ExpenseCategoryService expenseCategoryService, ExpenseCategoryRepository expenseCategoryRepository, ExpenseService expenseService, PermissionGuard permissionGuard) {
+	public ExpenseGraphqlController(ExpenseCategoryService expenseCategoryService, ExpenseCategoryRepository expenseCategoryRepository, ExpenseService expenseService, PermissionGuard permissionGuard, BranchScope branchScope) {
 		this.expenseCategoryService = expenseCategoryService;
 		this.expenseCategoryRepository = expenseCategoryRepository;
 		this.expenseService = expenseService;
 		this.permissionGuard = permissionGuard;
+		this.branchScope = branchScope;
 	}
 
 	@QueryMapping
@@ -84,7 +87,10 @@ public class ExpenseGraphqlController {
 		if (filter != null && filter.to() != null && !filter.to().isBlank()) {
 			to = LocalDate.parse(filter.to().trim());
 		}
-		return expenseService.findExpenses(from, to);
+		String scoped = branchScope.scopeFilter(authentication, filter != null ? filter.branch() : null);
+		return expenseService.findExpenses(from, to).stream()
+				.filter(e -> scoped == null || scoped.equalsIgnoreCase(e.getBranch()))
+				.toList();
 	}
 
 	@MutationMapping
@@ -99,7 +105,8 @@ public class ExpenseGraphqlController {
 				input.categoryId(),
 				input.description(),
 				input.amount(),
-				pm
+				pm,
+				branchScope.resolveLocation(authentication, input.branch())
 		), createdBy);
 	}
 
@@ -116,14 +123,14 @@ public class ExpenseGraphqlController {
 				input.description(),
 				input.amount(),
 				pm
-		));
+		), authentication);
 	}
 
 	@MutationMapping
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public boolean deleteExpense(@Argument DeleteExpenseInput input, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.EXPENSES, PermissionsService.PermissionAction.DELETE);
-		return expenseService.delete(input.id());
+		return expenseService.delete(input.id(), authentication);
 	}
 
 	@SchemaMapping(typeName = "Expense", field = "date")
@@ -170,10 +177,10 @@ public class ExpenseGraphqlController {
 	public record DeleteExpenseCategoryInput(long id) {
 	}
 
-	public record ExpenseFilter(String from, String to) {
+	public record ExpenseFilter(String from, String to, String branch) {
 	}
 
-	public record CreateExpenseInput(String date, Long categoryId, String description, Double amount, String paymentMethod) {
+	public record CreateExpenseInput(String date, Long categoryId, String description, Double amount, String paymentMethod, String branch) {
 	}
 
 	public record UpdateExpenseInput(long id, String date, Long categoryId, String description, Double amount, String paymentMethod) {

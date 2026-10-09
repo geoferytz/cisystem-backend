@@ -33,6 +33,9 @@ public class ExpenseEntity {
 	@Column(nullable = false)
 	private Instant createdAt = Instant.now();
 
+	@Column(length = 60)
+	private String branch = "MAIN";
+
 	@Column(length = 320)
 	private String createdBy;
 
@@ -82,6 +85,14 @@ public class ExpenseEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public String getBranch() {
+		return branch;
+	}
+
+	public void setBranch(String branch) {
+		this.branch = branch;
 	}
 
 	public String getCreatedBy() {

@@ -5,6 +5,8 @@ import com.cosmetics.inventory.product.ProductBatchRepository;
 import com.cosmetics.inventory.product.ProductEntity;
 import com.cosmetics.inventory.product.ProductRepository;
 import com.cosmetics.inventory.product.ProductService;
+import com.cosmetics.inventory.product.ProductUnitEntity;
+import com.cosmetics.inventory.product.ProductUnitRepository;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
@@ -13,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 
+import com.cosmetics.inventory.branch.BranchScope;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionsService;
@@ -24,13 +27,17 @@ public class ProductGraphqlController {
 	private final ProductService productService;
 	private final ProductRepository productRepository;
 	private final ProductBatchRepository batchRepository;
+	private final ProductUnitRepository unitRepository;
 	private final PermissionGuard permissionGuard;
+	private final BranchScope branchScope;
 
-	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository, PermissionGuard permissionGuard) {
+	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository, ProductUnitRepository unitRepository, PermissionGuard permissionGuard, BranchScope branchScope) {
 		this.productService = productService;
 		this.productRepository = productRepository;
 		this.batchRepository = batchRepository;
+		this.unitRepository = unitRepository;
 		this.permissionGuard = permissionGuard;
+		this.branchScope = branchScope;
 	}
 
 	@QueryMapping
@@ -62,7 +69,9 @@ public class ProductGraphqlController {
 				input.variant(),
 				input.unitOfMeasure(),
 				input.buyingPrice(),
-				input.sellingPrice()
+				input.sellingPrice(),
+				input.active(),
+				toUnitInputs(input.units())
 		));
 	}
 
@@ -80,7 +89,8 @@ public class ProductGraphqlController {
 				input.variant(),
 				input.unitOfMeasure(),
 				input.buyingPrice(),
-				input.sellingPrice()
+				input.sellingPrice(),
+				input.units() != null ? toUnitInputs(input.units()) : null
 		));
 	}
 
@@ -101,7 +111,7 @@ public class ProductGraphqlController {
 				input.expiryDate(),
 				input.costPrice(),
 				input.quantityReceived(),
-				input.location()
+				branchScope.resolveLocation(authentication, input.location())
 		), authentication);
 	}
 
@@ -137,6 +147,32 @@ public class ProductGraphqlController {
 		return batch.getCreatedAt().toString();
 	}
 
+	@SchemaMapping(typeName = "Product", field = "units")
+	@PreAuthorize("isAuthenticated()")
+	public List<ProductUnitEntity> units(ProductEntity product, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.VIEW);
+		return unitRepository.findByProductIdOrderByIdAsc(product.getId());
+	}
+
+	@SchemaMapping(typeName = "ProductUnit", field = "price")
+	@PreAuthorize("isAuthenticated()")
+	public Double unitPrice(ProductUnitEntity unit) {
+		return unit.getPrice() != null ? unit.getPrice().doubleValue() : null;
+	}
+
+	@SchemaMapping(typeName = "ProductUnit", field = "buyingPrice")
+	@PreAuthorize("isAuthenticated()")
+	public Double unitBuyingPrice(ProductUnitEntity unit) {
+		return unit.getBuyingPrice() != null ? unit.getBuyingPrice().doubleValue() : null;
+	}
+
+	private static List<ProductService.UnitInput> toUnitInputs(List<ProductUnitInput> units) {
+		if (units == null) return null;
+		return units.stream()
+				.map(u -> new ProductService.UnitInput(u.name(), u.price(), u.buyingPrice(), u.quantity()))
+				.toList();
+	}
+
 	@SchemaMapping(typeName = "ProductBatch", field = "costPrice")
 	@PreAuthorize("isAuthenticated()")
 	public double costPrice(ProductBatchEntity batch) {
@@ -146,10 +182,13 @@ public class ProductGraphqlController {
 	public record ProductFilter(String query, Boolean active) {
 	}
 
-	public record CreateProductInput(String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice) {
+	public record ProductUnitInput(String name, Double price, Double buyingPrice, Integer quantity) {
 	}
 
-	public record UpdateProductInput(long id, String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice) {
+	public record CreateProductInput(String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice, Boolean active, List<ProductUnitInput> units) {
+	}
+
+	public record UpdateProductInput(long id, String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice, List<ProductUnitInput> units) {
 	}
 
 	public record SetProductStatusInput(long id, boolean active) {

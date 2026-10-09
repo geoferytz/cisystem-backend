@@ -28,28 +28,33 @@ public class AlertsReportsGraphqlController {
 	private final StockMovementRepository stockMovementRepository;
 	private final SalesOrderRepository salesOrderRepository;
 	private final PermissionGuard permissionGuard;
+	private final com.cosmetics.inventory.branch.BranchScope branchScope;
 
 	public AlertsReportsGraphqlController(
 			InventoryRepository inventoryRepository,
 			StockMovementRepository stockMovementRepository,
 			SalesOrderRepository salesOrderRepository,
-			PermissionGuard permissionGuard
+			PermissionGuard permissionGuard,
+			com.cosmetics.inventory.branch.BranchScope branchScope
 	) {
 		this.inventoryRepository = inventoryRepository;
 		this.stockMovementRepository = stockMovementRepository;
 		this.salesOrderRepository = salesOrderRepository;
 		this.permissionGuard = permissionGuard;
+		this.branchScope = branchScope;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<ExpiryAlertDto> expiryAlerts(@Argument int days) {
+	public List<ExpiryAlertDto> expiryAlerts(@Argument int days, @Argument String branch, Authentication authentication) {
 		LocalDate today = LocalDate.now();
 		LocalDate until = today.plusDays(days);
+		String scoped = branchScope.scopeFilter(authentication, branch);
 
 		return inventoryRepository.findAll().stream()
 				.filter(i -> i.getQtyOnHand() > 0)
+				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
 				.filter(i -> !i.getBatch().getExpiryDate().isAfter(until))
 				.map(i -> {
 					var batch = i.getBatch();
@@ -73,8 +78,9 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public DailySalesReportDto dailySalesReport(Authentication authentication, @Argument String date) {
+	public DailySalesReportDto dailySalesReport(Authentication authentication, @Argument String date, @Argument String branch) {
 		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
+		String scoped = branchScope.scopeFilter(authentication, branch);
 		LocalDate day = LocalDate.parse(date);
 		Instant from = day.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant to = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -87,6 +93,9 @@ public class AlertsReportsGraphqlController {
 
 		for (var so : orders) {
 			for (var line : so.getLines()) {
+				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
+					continue;
+				}
 				var p = line.getProduct();
 				long productId = p.getId();
 				int qty = line.getQuantity();
@@ -143,15 +152,62 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<LowStockAlertDto> lowStockAlerts(@Argument int threshold) {
+	public List<DailySalesReportDto> salesDailyReports(Authentication authentication, @Argument String from, @Argument String to, @Argument String branch) {
+		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
+		String scoped = branchScope.scopeFilter(authentication, branch);
+		LocalDate fromDay = LocalDate.parse(from);
+		LocalDate toDay = LocalDate.parse(to);
+		if (toDay.isBefore(fromDay)) {
+			return List.of();
+		}
+		Instant fromI = fromDay.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant toI = toDay.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+
+		var orders = salesOrderRepository.findBySoldAtGreaterThanEqualAndSoldAtLessThan(fromI, toI);
+		Map<LocalDate, double[]> totals = new java.util.TreeMap<>();
+
+		for (var so : orders) {
+			LocalDate day = so.getSoldAt().atZone(ZoneOffset.UTC).toLocalDate();
+			double[] acc = totals.computeIfAbsent(day, k -> new double[2]);
+			for (var line : so.getLines()) {
+				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
+					continue;
+				}
+				BigDecimal salesAmount = line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity()));
+				BigDecimal costAmount = line.getDeductions().stream()
+						.map(d -> d.getBatch().getCostPrice().multiply(BigDecimal.valueOf(d.getQuantity())))
+						.reduce(BigDecimal.ZERO, BigDecimal::add);
+				acc[0] += salesAmount.doubleValue();
+				acc[1] += costAmount.doubleValue();
+			}
+		}
+
+		return totals.entrySet().stream()
+				.map(e -> new DailySalesReportDto(
+						e.getKey().toString(),
+						e.getValue()[0],
+						e.getValue()[1],
+						e.getValue()[0] - e.getValue()[1],
+						List.of()
+				))
+				.toList();
+	}
+
+	@QueryMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional(readOnly = true)
+	public List<LowStockAlertDto> lowStockAlerts(@Argument int threshold, @Argument String branch, Authentication authentication) {
+		String scoped = branchScope.scopeFilter(authentication, branch);
 		Map<Long, Integer> qtyByProduct = inventoryRepository.findAll().stream()
 				.filter(i -> i.getQtyOnHand() > 0)
+				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
 				.collect(java.util.stream.Collectors.groupingBy(
 					i -> i.getBatch().getProduct().getId(),
 					java.util.stream.Collectors.summingInt(i -> i.getQtyOnHand())
 				));
 
 		return inventoryRepository.findAll().stream()
+				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
 				.map(i -> i.getBatch().getProduct())
 				.distinct()
 				.map(p -> new LowStockAlertDto(
@@ -169,8 +225,10 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public List<LowStockBatchAlertDto> lowStockBatchAlerts(@Argument int threshold) {
+	public List<LowStockBatchAlertDto> lowStockBatchAlerts(@Argument int threshold, @Argument String branch, Authentication authentication) {
+		String scoped = branchScope.scopeFilter(authentication, branch);
 		return inventoryRepository.findAll().stream()
+				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
 				.map(i -> {
 					var batch = i.getBatch();
 					var product = batch.getProduct();
@@ -194,10 +252,12 @@ public class AlertsReportsGraphqlController {
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
-	public InventoryValuationDto inventoryValuation(Authentication authentication) {
+	public InventoryValuationDto inventoryValuation(Authentication authentication, @Argument String branch) {
 		permissionGuard.require(authentication, PermissionModule.REPORTS, PermissionsService.PermissionAction.VIEW);
+		String scoped = branchScope.scopeFilter(authentication, branch);
 		double total = inventoryRepository.findAll().stream()
 				.filter(i -> i.getQtyOnHand() > 0)
+				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
 				.mapToDouble(i -> i.getQtyOnHand() * i.getBatch().getCostPrice().doubleValue())
 				.sum();
 		return new InventoryValuationDto(total);

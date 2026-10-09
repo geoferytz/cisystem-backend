@@ -5,5 +5,6 @@ public enum StockMovementType {
 	OUT,
 	LOSS,
 	ADJUSTMENT,
-	RETURN
+	RETURN,
+	EXPIRED
 }

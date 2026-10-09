@@ -6,6 +6,13 @@ type Query {
   categories(filter: CategoryFilter): [Category!]!
   category(id: ID!): Category
 
+  branches(filter: BranchFilter): [Branch!]!
+  branchOptions: [Branch!]!
+
+  stockTransfers(filter: StockTransferFilter): [StockTransfer!]!
+  stockTransfer(id: ID!): StockTransfer
+  branch(id: ID!): Branch
+
   inventory(filter: InventoryFilter): [InventoryItem!]!
   stockMovements(filter: StockMovementFilter): [StockMovement!]!
 
@@ -15,20 +22,26 @@ type Query {
   userPermissions(userId: ID!): [UserPermission!]!
   myPermissions: [UserPermission!]!
 
-  purchaseOrders: [PurchaseOrder!]!
-  salesOrders: [SalesOrder!]!
+  purchaseOrders(branch: String): [PurchaseOrder!]!
+  repurchaseProducts(branch: String): [RepurchaseProduct!]!
+  pendingRepurchases(branch: String): [RepurchaseOrder!]!
+  salesOrders(branch: String): [SalesOrder!]!
+  counterProducts(location: String): [CounterProduct!]!
+  pendingCounterCarts: [CounterCart!]!
+  counterExpenseCategories: [ExpenseCategory!]!
 
   mySales: [MySale!]!
   mySale(id: ID!): MySale
 
-  expiryAlerts(days: Int!): [ExpiryAlert!]!
-  lowStockAlerts(threshold: Int!): [LowStockAlert!]!
-  lowStockBatchAlerts(threshold: Int!): [LowStockBatchAlert!]!
+  expiryAlerts(days: Int!, branch: String): [ExpiryAlert!]!
+  lowStockAlerts(threshold: Int!, branch: String): [LowStockAlert!]!
+  lowStockBatchAlerts(threshold: Int!, branch: String): [LowStockBatchAlert!]!
 
-  inventoryValuation: InventoryValuation!
+  inventoryValuation(branch: String): InventoryValuation!
   movementAuditReport(filter: MovementAuditFilter): [StockMovement!]!
 
-  dailySalesReport(date: String!): DailySalesReport!
+  dailySalesReport(date: String!, branch: String): DailySalesReport!
+  salesDailyReports(from: String!, to: String!, branch: String): [DailySalesReport!]!
 
   expenseCategories(filter: ExpenseCategoryFilter): [ExpenseCategory!]!
   expenses(filter: ExpenseFilter): [Expense!]!
@@ -36,12 +49,22 @@ type Query {
 
 type Mutation {
   login(input: LoginInput!): AuthPayload!
+  refreshToken: AuthPayload!
 
   changeMyPassword(input: ChangeMyPasswordInput!): Boolean!
 
   createCategory(input: CreateCategoryInput!): Category!
   updateCategory(input: UpdateCategoryInput!): Category!
   deleteCategory(input: DeleteCategoryInput!): Boolean!
+
+  createBranch(input: CreateBranchInput!): Branch!
+  updateBranch(input: UpdateBranchInput!): Branch!
+  deleteBranch(input: DeleteBranchInput!): Boolean!
+
+  createStockTransfer(input: CreateStockTransferInput!): StockTransfer!
+  dispatchStockTransfer(input: StockTransferActionInput!): StockTransfer!
+  receiveStockTransfer(input: StockTransferActionInput!): StockTransfer!
+  cancelStockTransfer(input: StockTransferActionInput!): StockTransfer!
 
   createProduct(input: CreateProductInput!): Product!
   updateProduct(input: UpdateProductInput!): Product!
@@ -60,9 +83,14 @@ type Mutation {
   setUserPermissions(input: SetUserPermissionsInput!): [UserPermission!]!
 
   receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
+  submitRepurchase(input: SubmitRepurchaseInput!): RepurchaseOrder!
+  receiveRepurchase(input: ReceiveRepurchaseOrderInput!): RepurchaseOrder!
   updatePurchase(input: UpdatePurchaseInput!): PurchaseOrder!
   deletePurchase(input: DeletePurchaseInput!): Boolean!
   createSale(input: CreateSaleInput!): SalesOrder!
+  saveCounterCart(input: SaveCounterCartInput!): CounterCart!
+  checkoutCounterCart(input: CheckoutCounterCartInput!): SalesOrder!
+  cancelCounterCart(input: CounterCartVersionInput!): Boolean!
   updateSale(input: UpdateSaleInput!): SalesOrder!
   deleteSale(input: DeleteSaleInput!): Boolean!
 
@@ -71,6 +99,7 @@ type Mutation {
   deleteMySale(input: DeleteMySaleInput!): Boolean!
 
   adjustInventory(input: AdjustInventoryInput!): InventoryItem!
+  writeOffExpired(branch: String): [InventoryItem!]!
 
   createExpenseCategory(input: CreateExpenseCategoryInput!): ExpenseCategory!
   updateExpenseCategory(input: UpdateExpenseCategoryInput!): ExpenseCategory!
@@ -89,6 +118,7 @@ input ExpenseCategoryFilter {
 input ExpenseFilter {
   from: String
   to: String
+  branch: String
 }
 
 type ExpenseCategory {
@@ -107,6 +137,7 @@ type Expense {
   paymentMethod: String!
   createdAt: String!
   createdBy: String
+  branch: String
 }
 
 input CreateExpenseCategoryInput {
@@ -131,6 +162,7 @@ input CreateExpenseInput {
   description: String
   amount: Float!
   paymentMethod: String!
+  branch: String
 }
 
 input UpdateExpenseInput {
@@ -183,12 +215,81 @@ type MySaleLine {
   unitPrice: Float!
 }
 
+type RepurchaseProduct {
+  id: ID!
+  sku: String!
+  name: String!
+  barcode: String
+  brand: String
+  category: String
+  unitOfMeasure: String
+  active: Boolean!
+  buyingPrice: Float
+  sellingPrice: Float
+  availableQuantity: Int!
+}
+
+type RepurchaseOrder {
+  id: ID!
+  supplier: String
+  invoiceNumber: String
+  createdAt: String!
+  createdBy: String
+  activation: Boolean!
+  branch: String
+  receivedPurchaseId: ID
+  lines: [RepurchaseOrderLine!]!
+}
+
+type RepurchaseOrderLine {
+  productId: ID!
+  sku: String!
+  productName: String!
+  quantity: Int!
+  buyingPrice: Float!
+  sellingPrice: Float!
+  batchNumber: String
+  expiryDate: String
+  location: String
+}
+
+input SubmitRepurchaseInput {
+  id: ID!
+  supplier: String
+  invoiceNumber: String
+  activation: Boolean
+  branch: String
+  lines: [RepurchaseLineInput!]!
+}
+
+input RepurchaseLineInput {
+  productId: ID!
+  quantity: Int!
+  buyingPrice: Float!
+  sellingPrice: Float!
+  batchNumber: String
+  expiryDate: String
+  location: String
+}
+
+input ReceiveRepurchaseOrderInput {
+  id: ID!
+  lines: [RepurchaseReceiptLineInput!]!
+}
+
+input RepurchaseReceiptLineInput {
+  productId: ID!
+  batchNumber: String!
+  expiryDate: String!
+}
+
 type PurchaseOrder {
   id: ID!
   supplier: String
   invoiceNumber: String
   receivedAt: String!
   receivedBy: String
+  branch: String
   lines: [PurchaseOrderLine!]!
 }
 
@@ -202,6 +303,68 @@ type PurchaseOrderLine {
   expiryDate: String!
   costPrice: Float!
   quantityReceived: Int!
+}
+
+type CounterProduct {
+  id: ID!
+  sku: String!
+  barcode: String
+  name: String!
+  brand: String
+  category: String
+  unitOfMeasure: String
+  sellingPrice: Float
+  availableQuantity: Int!
+  batchNumber: String
+  expiryDate: String
+  daysToExpiry: Int
+  suggestedSellingPrice: Float
+}
+
+type CounterCart {
+  id: ID!
+  version: Int!
+  customer: String
+  referenceNumber: String
+  createdAt: String!
+  updatedAt: String!
+  createdBy: String
+  total: Float!
+  lines: [CounterCartLine!]!
+}
+
+type CounterCartLine {
+  productId: ID!
+  sku: String!
+  productName: String!
+  quantity: Int!
+  unitPrice: Float!
+  location: String!
+}
+
+input SaveCounterCartInput {
+  id: ID!
+  version: Int
+  customer: String
+  referenceNumber: String
+  lines: [CounterCartLineInput!]!
+}
+
+input CounterCartLineInput {
+  productId: ID!
+  quantity: Int!
+  location: String
+}
+
+input CheckoutCounterCartInput {
+  id: ID!
+  version: Int!
+  expectedTotal: Float!
+}
+
+input CounterCartVersionInput {
+  id: ID!
+  version: Int!
 }
 
 type SalesOrder {
@@ -304,6 +467,9 @@ type User {
   name: String!
   email: String!
   roles: [String!]!
+  branchId: ID
+  branchCode: String
+  branchName: String
 }
 
 type AdminUser {
@@ -313,6 +479,9 @@ type AdminUser {
   plainPassword: String
   active: Boolean!
   roles: [String!]!
+  branchId: ID
+  branchCode: String
+  branchName: String
 }
 
 type Category {
@@ -320,6 +489,17 @@ type Category {
   name: String!
   description: String
   active: Boolean!
+}
+
+type Branch {
+  id: ID!
+  code: String!
+  name: String!
+  address: String
+  phone: String
+  active: Boolean!
+  main: Boolean!
+  createdAt: String!
 }
 
 type Product {
@@ -335,6 +515,15 @@ type Product {
   sellingPrice: Float
   active: Boolean!
   batches: [ProductBatch!]!
+  units: [ProductUnit!]!
+}
+
+type ProductUnit {
+  id: ID!
+  name: String!
+  price: Float
+  buyingPrice: Float
+  quantity: Int!
 }
 
 type ProductBatch {
@@ -380,6 +569,7 @@ input InventoryFilter {
   query: String
   productId: ID
   includeZero: Boolean
+  branch: String
 }
 
 input StockMovementFilter {
@@ -414,6 +604,38 @@ input DeleteCategoryInput {
   id: ID!
 }
 
+input BranchFilter {
+  query: String
+  active: Boolean
+}
+
+input CreateBranchInput {
+  code: String!
+  name: String!
+  address: String
+  phone: String
+}
+
+input UpdateBranchInput {
+  id: ID!
+  code: String
+  name: String
+  address: String
+  phone: String
+  active: Boolean
+}
+
+input DeleteBranchInput {
+  id: ID!
+}
+
+input ProductUnitInput {
+  name: String!
+  price: Float
+  buyingPrice: Float
+  quantity: Int
+}
+
 input CreateProductInput {
   sku: String!
   barcode: String
@@ -424,6 +646,8 @@ input CreateProductInput {
   unitOfMeasure: String
   buyingPrice: Float
   sellingPrice: Float
+  active: Boolean
+  units: [ProductUnitInput!]
 }
 
 input UpdateProductInput {
@@ -437,6 +661,7 @@ input UpdateProductInput {
   unitOfMeasure: String
   buyingPrice: Float
   sellingPrice: Float
+  units: [ProductUnitInput!]
 }
 
 input SetProductStatusInput {
@@ -463,6 +688,7 @@ input CreateUserInput {
   email: String!
   password: String!
   roles: [String!]!
+  branchId: ID
 }
 
 input UpdateUserInput {
@@ -471,6 +697,7 @@ input UpdateUserInput {
   email: String!
   password: String
   roles: [String!]!
+  branchId: ID
 }
 
 input SetUserActiveInput {
@@ -491,6 +718,7 @@ input ResetUserPasswordInput {
 input ReceivePurchaseInput {
   supplier: String
   invoiceNumber: String
+  branch: String
   lines: [ReceivePurchaseLineInput!]!
 }
 
@@ -498,6 +726,7 @@ input UpdatePurchaseInput {
   id: ID!
   supplier: String
   invoiceNumber: String
+  branch: String
   lines: [ReceivePurchaseLineInput!]!
 }
 
@@ -528,6 +757,7 @@ input UpdateSaleInput {
 
 input DeleteSaleInput {
   id: ID!
+  adminCode: String
 }
 
 input CreateSaleLineInput {
@@ -571,4 +801,51 @@ input MovementAuditFilter {
   type: String
   from: String
   to: String
+}
+
+type StockTransfer {
+  id: ID!
+  reference: String
+  fromBranch: String!
+  toBranch: String!
+  status: String!
+  note: String
+  createdAt: String!
+  createdBy: String
+  dispatchedAt: String
+  dispatchedBy: String
+  receivedAt: String
+  receivedBy: String
+  lines: [StockTransferLine!]!
+}
+
+type StockTransferLine {
+  productId: ID!
+  batchId: ID!
+  sku: String
+  productName: String
+  batchNumber: String
+  quantity: Int!
+}
+
+input StockTransferFilter {
+  branch: String
+  status: String
+  query: String
+}
+
+input CreateStockTransferInput {
+  fromBranch: String
+  toBranch: String!
+  note: String
+  lines: [StockTransferLineInput!]!
+}
+
+input StockTransferLineInput {
+  batchId: ID!
+  quantity: Int!
+}
+
+input StockTransferActionInput {
+  id: ID!
 }

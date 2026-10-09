@@ -26,6 +26,7 @@ public class PurchasingService {
 	private final InventoryRepository inventoryRepository;
 	private final StockMovementRepository stockMovementRepository;
 	private final SalesDeductionRepository salesDeductionRepository;
+	private final com.cosmetics.inventory.branch.BranchScope branchScope;
 
 	public PurchasingService(
 			PurchaseOrderRepository purchaseOrderRepository,
@@ -33,7 +34,8 @@ public class PurchasingService {
 			ProductBatchRepository batchRepository,
 			InventoryRepository inventoryRepository,
 			StockMovementRepository stockMovementRepository,
-			SalesDeductionRepository salesDeductionRepository
+			SalesDeductionRepository salesDeductionRepository,
+			com.cosmetics.inventory.branch.BranchScope branchScope
 	) {
 		this.purchaseOrderRepository = purchaseOrderRepository;
 		this.productRepository = productRepository;
@@ -41,6 +43,7 @@ public class PurchasingService {
 		this.inventoryRepository = inventoryRepository;
 		this.stockMovementRepository = stockMovementRepository;
 		this.salesDeductionRepository = salesDeductionRepository;
+		this.branchScope = branchScope;
 	}
 
 	@Transactional
@@ -52,6 +55,7 @@ public class PurchasingService {
 		PurchaseOrderEntity po = new PurchaseOrderEntity();
 		po.setSupplier(cmd.supplier());
 		po.setInvoiceNumber(cmd.invoiceNumber());
+		po.setBranch(cmd.branch());
 		po.setReceivedBy(authentication != null ? String.valueOf(authentication.getPrincipal()) : null);
 
 		for (ReceivePurchaseLineCommand line : cmd.lines()) {
@@ -66,11 +70,11 @@ public class PurchasingService {
 			ProductBatchEntity persistedBatch = batchRepository.save(batch);
 
 			InventoryItemEntity inv = inventoryRepository
-					.findByBatchIdAndLocation(persistedBatch.getId(), "MAIN")
+					.findByBatchIdAndLocation(persistedBatch.getId(), cmd.branch())
 					.orElseGet(() -> {
 						InventoryItemEntity i = new InventoryItemEntity();
 						i.setBatch(persistedBatch);
-						i.setLocation("MAIN");
+						i.setLocation(cmd.branch());
 						return i;
 					});
 			inv.setQtyOnHand(inv.getQtyOnHand() + line.quantityReceived());
@@ -101,18 +105,23 @@ public class PurchasingService {
 			throw new IllegalArgumentException("Purchase id is required");
 		}
 		PurchaseOrderEntity po = purchaseOrderRepository.findById(cmd.id()).orElseThrow();
+		branchScope.assertBranch(authentication, po.getBranch());
 		restoreInventoryForPurchase(po, authentication);
 
 		po.setSupplier(cmd.supplier());
 		po.setInvoiceNumber(cmd.invoiceNumber());
+		if (cmd.branch() != null) {
+			po.setBranch(cmd.branch());
+		}
 		po.getLines().clear();
-		applyPurchaseLines(po, cmd.lines(), cmd.invoiceNumber(), authentication);
+		applyPurchaseLines(po, cmd.lines(), cmd.invoiceNumber(), po.getBranch(), authentication);
 		return purchaseOrderRepository.save(po);
 	}
 
 	@Transactional
 	public boolean deletePurchase(long id, Authentication authentication) {
 		PurchaseOrderEntity po = purchaseOrderRepository.findById(id).orElseThrow();
+		branchScope.assertBranch(authentication, po.getBranch());
 		restoreInventoryForPurchase(po, authentication);
 		purchaseOrderRepository.delete(po);
 		return true;
@@ -131,7 +140,7 @@ public class PurchasingService {
 
 			int qty = line.getQuantityReceived();
 			if (qty <= 0) continue;
-			InventoryItemEntity inv = inventoryRepository.findByBatchIdAndLocation(batchId, "MAIN").orElse(null);
+			InventoryItemEntity inv = inventoryRepository.findByBatchIdAndLocation(batchId, po.getBranch()).orElse(null);
 			if (inv == null || inv.getQtyOnHand() < qty) {
 				throw new IllegalArgumentException("Cannot edit/delete purchase: insufficient stock to rollback batch " + batch.getBatchNumber());
 			}
@@ -148,7 +157,7 @@ public class PurchasingService {
 		}
 	}
 
-	private void applyPurchaseLines(PurchaseOrderEntity po, List<ReceivePurchaseLineCommand> lines, String invoice, Authentication authentication) {
+	private void applyPurchaseLines(PurchaseOrderEntity po, List<ReceivePurchaseLineCommand> lines, String invoice, String branch, Authentication authentication) {
 		if (lines == null || lines.isEmpty()) {
 			throw new IllegalArgumentException("At least one line is required");
 		}
@@ -164,11 +173,11 @@ public class PurchasingService {
 			ProductBatchEntity persistedBatch = batchRepository.save(batch);
 
 			InventoryItemEntity inv = inventoryRepository
-					.findByBatchIdAndLocation(persistedBatch.getId(), "MAIN")
+					.findByBatchIdAndLocation(persistedBatch.getId(), branch)
 					.orElseGet(() -> {
 						InventoryItemEntity i = new InventoryItemEntity();
 						i.setBatch(persistedBatch);
-						i.setLocation("MAIN");
+						i.setLocation(branch);
 						return i;
 					});
 			inv.setQtyOnHand(inv.getQtyOnHand() + line.quantityReceived());
@@ -191,10 +200,10 @@ public class PurchasingService {
 		}
 	}
 
-	public record ReceivePurchaseCommand(String supplier, String invoiceNumber, List<ReceivePurchaseLineCommand> lines) {
+	public record ReceivePurchaseCommand(String supplier, String invoiceNumber, String branch, List<ReceivePurchaseLineCommand> lines) {
 	}
 
-	public record UpdatePurchaseCommand(long id, String supplier, String invoiceNumber, List<ReceivePurchaseLineCommand> lines) {
+	public record UpdatePurchaseCommand(long id, String supplier, String invoiceNumber, String branch, List<ReceivePurchaseLineCommand> lines) {
 	}
 
 	public record ReceivePurchaseLineCommand(long productId, String batchNumber, String expiryDate, double costPrice,

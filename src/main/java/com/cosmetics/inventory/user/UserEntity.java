@@ -35,6 +35,10 @@ public class UserEntity {
 	)
 	private Set<RoleEntity> roles = new HashSet<>();
 
+	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(name = "branch_id")
+	private com.cosmetics.inventory.branch.BranchEntity branch;
+
 	public Long getId() {
 		return id;
 	}
@@ -85,5 +89,13 @@ public class UserEntity {
 
 	public void setRoles(Set<RoleEntity> roles) {
 		this.roles = roles;
+	}
+
+	public com.cosmetics.inventory.branch.BranchEntity getBranch() {
+		return branch;
+	}
+
+	public void setBranch(com.cosmetics.inventory.branch.BranchEntity branch) {
+		this.branch = branch;
 	}
 }

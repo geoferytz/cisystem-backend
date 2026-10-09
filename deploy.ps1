@@ -1,198 +1,205 @@
-# ==========================================
-# CISYSTEM BACKEND CI/CD DEPLOYMENT
-# PowerShell (Windows → AWS Ubuntu Linux)
-# ==========================================
+# CISYSTEM BACKEND - DEPLOY TO CONTABO
+#
+#   .\deploy.ps1                 # bump patch, build, push, deploy
+#   .\deploy.ps1 -Bump minor     # or: major
+#   .\deploy.ps1 -Bump none      # deploy the version in .backend-version as is (first deploy)
+#   .\deploy.ps1 -BuildOnly      # bump patch, build, push - and STOP. The server is never
+#                                # contacted. Test that image on staging, then deploy the
+#                                # SAME image with -DeployOnly <version>.
+#   .\deploy.ps1 -DeployOnly 1.0.32
+#                                # NO build/push: deploy an image already on Docker Hub
+#
+# Flow (same idea as the LSMS deploy-v3 script):
+#   PC:     bump version -> mvnw clean package -> docker build -> docker push (exact tag, never :current/:latest)
+#   Server: pull -> write BACKEND_VERSION into .env.backend -> compose up backend -> health check
+#           -> automatic rollback on failure (remote-deploy.sh)
+#   PC:     .backend-version is written + committed ONLY after DEPLOY_OK.
+# The frontend and the DB are never touched.
+param(
+    [ValidateSet('patch', 'minor', 'major', 'none')]
+    [string]$Bump = 'patch',
+    # Build and push the image, then stop: no SSH, no deploy, no version file.
+    # Refuses a tag that is already on Docker Hub (a pushed image is never overwritten).
+    [switch]$BuildOnly,
+    # Deploy an image that is already on Docker Hub (built earlier with -BuildOnly and tested
+    # on staging). Skips the build and the push.
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$DeployOnly
+)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
-trap {
-    Write-Host "[-] Unhandled error: $($_.Exception.Message)"
-    exit 1
+# -- CONFIG ---------------------------------------------------
+$ImageName    = 'geofrey2025/cisystem-backend'
+$VersionFile  = '.backend-version'
+$SshHost      = 'root@164.68.112.5'               # Contabo. Password-free? ssh-copy-id root@164.68.112.5
+$RemoteScript = '/tmp/remote-deploy-backend.sh'
+
+function Step([string]$m) { Write-Host "[*] $m" -ForegroundColor Cyan }
+function Fail([string]$m) { Write-Host "`n[FAILED] $m" -ForegroundColor Red; exit 1 }
+
+# Run a native command and stop on a non-zero exit code - after EVERY command.
+function Invoke-Checked([string]$What, [scriptblock]$Cmd) {
+    & $Cmd
+    if ($LASTEXITCODE -ne 0) { Fail "$What (exit $LASTEXITCODE)" }
 }
 
-function Assert-LastExitCode {
-    param(
-        [string]$Step
-    )
+# Is this exact tag already on Docker Hub? "no such manifest" goes to stderr - that is the answer,
+# not an error, so it must not trip $ErrorActionPreference = 'Stop'.
+function Test-ImageOnHub([string]$Image) {
+    $ErrorActionPreference = 'Continue'
+    docker manifest inspect $Image 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+# sha256 digest of a local image that has been pushed or pulled ('' when it has none).
+# No quotes inside the Go template: Windows PowerShell 5.1 strips them from native arguments.
+function Get-ImageDigest([string]$Image) {
+    $meta = (docker image inspect $Image --format '{{json .}}') -join '' | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $meta) { return '' }
+    return ((@($meta.RepoDigests) | Select-Object -First 1) -replace '^.*@', '')
+}
+
+# Refuse ANY modified, staged, deleted or untracked path in the repo.
+# No flag skips it. Runs git against $RepoRoot explicitly (not the caller's cwd) and forces
+# untracked files to be listed, whatever the user's git config says.
+function Assert-CleanTree([string]$Root) {
+    $ErrorActionPreference = 'Continue'   # git may print CRLF warnings on stderr; they are not errors
+    # Refresh stat info first, so a file whose content is unchanged (e.g. only touched, or CRLF/LF
+    # normalisation) never reads 'modified' on one run and clean on the next: same answer every run.
+    git -C $Root update-index -q --refresh | Out-Null
+    $lines = @(git -C $Root -c core.quotepath=false status --porcelain=v1 --untracked-files=all --ignore-submodules=none)
+    if ($LASTEXITCODE -ne 0) { Fail "git status imeshindwa kwenye $Root (exit $LASTEXITCODE)." }
+    if ($lines.Count) {
+        Fail ("Working tree si safi ($($lines.Count)) - commit au ondoa kwanza:`n    " + ($lines -join "`n    "))
+    }
+}
+
+$RepoRoot = $PSScriptRoot
+Push-Location $RepoRoot
+$tempScript = $null
+try {
+    if ($BuildOnly -and $DeployOnly) { Fail "Tumia -BuildOnly AU -DeployOnly, si vyote viwili." }
+    if ($DeployOnly -and $PSBoundParameters.ContainsKey('Bump')) { Fail "Tumia -DeployOnly AU -Bump, si vyote viwili." }
+
+    # -- CHECKS (nothing is changed yet) ----------------------
+    if (-not (Test-Path $VersionFile)) { Fail "$VersionFile haipo (inatakiwa iwe na semver, mfano 1.0.0)." }
+    $current = (Get-Content $VersionFile -Raw).Trim()
+    if ($current -notmatch '^(\d+)\.(\d+)\.(\d+)$') { Fail "$VersionFile si semver: '$current'" }
+    $major = [int]$Matches[1]; $minor = [int]$Matches[2]; $patch = [int]$Matches[3]
+    switch ($Bump) {
+        'major' { $major++; $minor = 0; $patch = 0 }
+        'minor' { $minor++; $patch = 0 }
+        'patch' { $patch++ }
+        'none'  { }
+    }
+    $newVersion = "$major.$minor.$patch"
+    if ($DeployOnly) { $newVersion = $DeployOnly }
+    $image = "${ImageName}:${newVersion}"
+
+    Assert-CleanTree $RepoRoot
+
+    # Docker must be running AND in Linux-container mode (the image runs on Ubuntu).
+    Invoke-Checked "Docker haipatikani - washa Docker Desktop" { docker version --format '{{.Server.Version}}' | Out-Null }
+    $dockerOs = (docker info --format '{{.OSType}}' 2>$null)
+    if ($dockerOs -eq 'windows') { Fail "Docker iko Windows-container mode - switch to Linux containers." }
+
+    if ($BuildOnly) {
+        # Nothing on the server is read or changed. A tag that is already published is never rebuilt:
+        # what was tested on staging must be byte-for-byte what -DeployOnly later puts on prod.
+        if (Test-ImageOnHub $image) { Fail "$image tayari iko Docker Hub - haitaandikwa upya. Tumia -DeployOnly $newVersion kuideploy, au -Bump kwa toleo jipya." }
+        Step "-BuildOnly: build + push ya $image. Server HAIGUSWI; $VersionFile haibadilishwi."
+    } else {
+        # Hakuna BatchMode: password prompt inaruhusiwa. Prompt moja hapa, moja kwa scp, moja kwa deploy.
+        # Kama unataka zero prompts: ssh-copy-id $SshHost (au alias 'contabo' kwenye ~/.ssh/config).
+        Invoke-Checked "SSH kwenda '$SshHost' imeshindwa (jaribu: ssh $SshHost)" {
+            ssh -o ConnectTimeout=15 $SshHost "true"
+        }
+    }
+
+    Step "Toleo: $current -> $newVersion   ($image)"
+
+    if ($DeployOnly) {
+        # The image must already be on Docker Hub; it is deployed exactly as it is.
+        if (-not (Test-ImageOnHub $image)) { Fail "$image haipo Docker Hub (au hujaingia: docker login -u geofrey2025). Server haijaguswa." }
+        Invoke-Checked "docker pull $image imeshindwa. Server haijaguswa." { docker pull -q $image | Out-Null }
+        Step "-DeployOnly: build na push vimerukwa. Image: $(Get-ImageDigest $image)"
+    } else {
+        # -- BUILD SPRING BOOT JAR ------------------------------
+        Step "mvnw clean package -DskipTests ..."
+        Invoke-Checked "Maven build imeshindwa" { .\mvnw.cmd clean package -DskipTests }
+
+        # -- BUILD DOCKER IMAGE ---------------------------------
+        Step "docker build..."
+        $revision = (git -C $RepoRoot rev-parse HEAD).Trim()
+        Invoke-Checked "docker build imeshindwa" {
+            docker build --build-arg "APP_VERSION=$newVersion" --label "org.opencontainers.image.revision=$revision" -t $image .
+        }
+
+        # The image must at least start its JVM with the real entrypoint before it is pushed.
+        Invoke-Checked "java -version ndani ya image imeshindwa" { docker run --rm $image -version }
+
+        # -- PUSH (exact tag only; Docker Hub sometimes times out -> retry) --
+        Step "docker push $image ..."
+        $pushed = $false
+        foreach ($wait in 0, 5, 15) {
+            if ($wait) { Write-Host "    push imeshindwa - najaribu tena baada ya ${wait}s" -ForegroundColor DarkYellow; Start-Sleep -Seconds $wait }
+            docker push $image
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+        }
+        if (-not $pushed) { Fail "docker push imeshindwa. Umeingia Docker Hub? (docker login -u geofrey2025). Server haijaguswa." }
+    }   # end: not -DeployOnly
+
+    if ($BuildOnly) {
+        Assert-CleanTree $RepoRoot   # nothing may have changed while building: the image IS this commit
+        Write-Host ""
+        Write-Host "[OK] BUILD_OK $newVersion - imejengwa na kusukumwa. Server haijaguswa; $VersionFile bado ni $current." -ForegroundColor Green
+        Write-Host "  Image:    $image"
+        Write-Host "  Digest:   $(Get-ImageDigest $image)"
+        Write-Host "  Commit:   $(git log -1 --format='%h %s')"
+        Write-Host "  Kifuatacho: ijaribu staging, kisha"
+        Write-Host "      .\deploy.ps1 -DeployOnly $newVersion"
+        return
+    }
+
+    # -- REMOTE DEPLOY ----------------------------------------
+    Assert-CleanTree $RepoRoot   # again: nothing may have changed while building
+
+    # LF-only copy without BOM (CRLF / BOM break bash).
+    $body = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'remote-deploy.sh')) -replace "`r", ''
+    $tempScript = [System.IO.Path]::GetTempFileName()
+    [System.IO.File]::WriteAllText($tempScript, $body, [System.Text.UTF8Encoding]::new($false))
+
+    Step "Deploying kwenye $SshHost ..."
+    Invoke-Checked "scp ya script imeshindwa. Server haijaguswa." { scp -q $tempScript "${SshHost}:${RemoteScript}" }
+
+    $out = @()
+    ssh $SshHost "bash $RemoteScript $newVersion; rc=`$?; rm -f $RemoteScript; exit `$rc" |
+        ForEach-Object { Write-Host "    $_"; $out += $_ }
+    $sshExit = $LASTEXITCODE
+
+    if ($sshExit -ne 0 -or ($out -notcontains "DEPLOY_OK $newVersion")) {
+        Fail "Deploy ya $newVersion imeshindwa (ssh exit $sshExit). Soma mistari ya [backend] hapo juu - rollback imefanyika yenyewe kama kulikuwa na toleo la awali. $VersionFile haijabadilishwa."
+    }
+
+    # -- SUCCESS: only now record the version ------------------
+    [System.IO.File]::WriteAllText((Join-Path $RepoRoot $VersionFile), "$newVersion`n", [System.Text.ASCIIEncoding]::new())
+    git add -- $VersionFile
+    git diff --cached --quiet -- $VersionFile
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[-] Failed step: $Step (exit code: $LASTEXITCODE)"
-        exit $LASTEXITCODE
+        git commit --quiet --only -m "deploy: backend $newVersion" -- $VersionFile
+        if ($LASTEXITCODE -ne 0) { Write-Host "[!] Deploy imefanikiwa lakini git commit ya $VersionFile imeshindwa - commit kwa mkono." -ForegroundColor DarkYellow }
+        else { Step "$VersionFile = $newVersion (committed)" }
     }
+
+    # Old local images of this repository (keep new + previous).
+    docker images $ImageName --format '{{.Tag}}' |
+        Where-Object { $_ -ne $newVersion -and $_ -ne $current -and $_ -ne '<none>' } |
+        ForEach-Object { docker rmi "${ImageName}:$_" | Out-Null }
+
+    Write-Host "`n[OK] DEPLOY_OK $newVersion" -ForegroundColor Green
 }
-
-Write-Host "=========================================="
-Write-Host "CISYSTEM BACKEND DEPLOYMENT STARTED"
-Write-Host "=========================================="
-
-# --------------------------------------------------
-# CHECK DOCKER MODE (must be Linux containers)
-# --------------------------------------------------
-Write-Host "[*] Checking Docker mode..."
-$dockerInfo = docker info 2>&1 | Out-String
-Assert-LastExitCode "docker info"
-
-if ($dockerInfo -like "*OSType: windows*") {
-    Write-Host "[-] Docker is in Windows container mode!"
-    Write-Host "Right-click Docker Desktop → Switch to Linux containers"
-    exit 1
+finally {
+    if ($tempScript -and (Test-Path $tempScript)) { Remove-Item $tempScript -Force }
+    Pop-Location
 }
-Write-Host "[+] Docker mode OK"
-
-# --------------------------------------------------
-# CONFIGURATION
-# --------------------------------------------------
-$ImageName         = "geofrey2025/cisystem-backend"
-$VersionFile       = ".backend-version"
-$PemPath           = 'C:\Users\geofr\.ssh\timerz.pem'
-$AwsUser           = "ubuntu"
-$AwsHost           = "ec2-16-170-25-198.eu-north-1.compute.amazonaws.com"
-$DeploymentDir     = "/home/ubuntu/deployment"
-
-$DockerHubUsername = "geofrey2025"
-$DockerHubPassword = "Timerz@2026"
-
-# --------------------------------------------------
-# VERSION INCREMENT
-# --------------------------------------------------
-if (!(Test-Path $VersionFile)) {
-    "1.0.0" | Set-Content $VersionFile
-}
-
-$version   = Get-Content $VersionFile
-$parts     = $version.Split(".")
-$parts[2]  = [int]$parts[2] + 1
-$newVersion = "$($parts[0]).$($parts[1]).$($parts[2])"
-Set-Content $VersionFile $newVersion
-
-Write-Host "[+] New version: $newVersion"
-
-
-# --------------------------------------------------
-# BUILD SPRING BOOT JAR
-# --------------------------------------------------
-Write-Host "[*] Building Spring Boot project..."
-./mvnw clean package -DskipTests
-Assert-LastExitCode "Maven build"
-Write-Host "[+] Maven build successful"
-
-# --------------------------------------------------
-# CLEAN OLD DOCKER IMAGES
-# --------------------------------------------------
-Write-Host "[*] Cleaning old Docker images..."
-$oldImages = docker images --filter "reference=$ImageName*" -q 2>$null
-if ($oldImages) {
-    $oldImages | ForEach-Object {
-        try { docker rmi $_ -f 2>$null | Out-Null } catch {}
-    }
-}
-docker image prune -f 2>$null | Out-Null
-Write-Host "[+] Cleanup done"
-
-# --------------------------------------------------
-# DOCKER LOGIN
-# --------------------------------------------------
-Write-Host "[*] Logging into Docker Hub..."
-$DockerHubPassword | docker login -u $DockerHubUsername --password-stdin
-Assert-LastExitCode "Docker login"
-Write-Host "[+] Docker login successful"
-
-# --------------------------------------------------
-# BUILD DOCKER IMAGE
-# --------------------------------------------------
-$tagVersion = "${ImageName}:${newVersion}"
-$tagCurrent = "${ImageName}:current"
-
-$env:DOCKER_BUILDKIT = "1"
-
-Write-Host "[*] Building Docker image: $tagVersion"
-docker build --pull -t $tagVersion .
-Assert-LastExitCode "Docker build"
-Write-Host "[+] Docker build complete"
-
-# Verify platform
-$imageInfo = docker inspect $tagVersion --format='OS: {{.Os}}, Arch: {{.Architecture}}'
-Write-Host "[*] Image platform: $imageInfo"
-
-# Tag as current
-docker tag $tagVersion $tagCurrent
-
-# --------------------------------------------------
-# PUSH TO DOCKER HUB
-# --------------------------------------------------
-Write-Host "[*] Pushing images to Docker Hub..."
-docker push $tagVersion
-Assert-LastExitCode "Docker push version"
-
-docker push $tagCurrent
-Assert-LastExitCode "Docker push current"
-Write-Host "[+] Images pushed successfully"
-
-# --------------------------------------------------
-# CREATE ENV FILE
-# --------------------------------------------------
-$envFilePath = ".env.backend"
-"BACKEND_VERSION=$newVersion" | Set-Content -NoNewline $envFilePath
-Write-Host "[+] .env.backend created"
-
-# --------------------------------------------------
-# COPY ENV FILE TO AWS
-# --------------------------------------------------
-Write-Host "[*] Uploading .env.backend to AWS..."
-scp -i $PemPath $envFilePath "${AwsUser}@${AwsHost}:${DeploymentDir}/.env.backend"
-Assert-LastExitCode "SCP env"
-Write-Host "[+] File copied to server"
-
-# --------------------------------------------------
-# CREATE REMOTE DEPLOY SCRIPT (LINUX SAFE)
-# --------------------------------------------------
-$remoteScript = @"
-#!/usr/bin/env bash
-set -e
-
-
-cd $DeploymentDir
-
-echo "=== Pulling latest backend image ==="
-docker compose --env-file .env --env-file .env.backend --env-file .env.frontend pull backend
-
-echo "=== Restarting backend container ==="
-docker compose --env-file .env --env-file .env.backend --env-file .env.frontend up -d --force-recreate backend
-
-echo "=== Running containers ==="
-docker ps --filter name=backend
-
-echo "=== Last backend logs ==="
-docker ps --filter "name=backend" --format "{{.Names}}" | while read cname; do
-    docker logs "$cname" --tail 40
-done
-
-"@
-
-$tempFile = "deploy_remote.sh"
-
-# CRITICAL: Write Linux-compatible LF file (no CRLF, no BOM)
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-
-$remoteScript = $remoteScript -replace "`r",""
-$remoteScript = $remoteScript.TrimStart()
-
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($tempFile, $remoteScript, $utf8NoBom)
-
-
-# Upload script
-Write-Host "[*] Uploading remote deploy script..."
-scp -i $PemPath $tempFile "${AwsUser}@${AwsHost}:${DeploymentDir}/deploy_remote.sh"
-Assert-LastExitCode "SCP script"
-Write-Host "[+] Remote deploy script uploaded"
-
-# Execute script
-Write-Host "[*] Running deployment on AWS..."
-ssh -i $PemPath -o StrictHostKeyChecking=no "${AwsUser}@${AwsHost}" "chmod +x $DeploymentDir/deploy_remote.sh && $DeploymentDir/deploy_remote.sh"
-Assert-LastExitCode "SSH deploy"
-
-Write-Host ""
-Write-Host "=========================================="
-Write-Host "[+] DEPLOYMENT COMPLETED SUCCESSFULLY"
-Write-Host "[+] VERSION: $newVersion"
-Write-Host "=========================================="

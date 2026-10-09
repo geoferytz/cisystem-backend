@@ -22,6 +22,9 @@ public class PurchaseOrderEntity {
 	@Column(nullable = false)
 	private Instant receivedAt = Instant.now();
 
+	@Column(length = 60)
+	private String branch = "MAIN";
+
 	@Column(length = 320)
 	private String receivedBy;
 
@@ -50,6 +53,14 @@ public class PurchaseOrderEntity {
 
 	public Instant getReceivedAt() {
 		return receivedAt;
+	}
+
+	public String getBranch() {
+		return branch;
+	}
+
+	public void setBranch(String branch) {
+		this.branch = branch;
 	}
 
 	public String getReceivedBy() {

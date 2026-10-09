@@ -10,6 +10,7 @@ public record PurchaseOrderDto(
 		String invoiceNumber,
 		String receivedAt,
 		String receivedBy,
+		String branch,
 		List<PurchaseOrderLineDto> lines
 ) {
 	public static PurchaseOrderDto from(PurchaseOrderEntity po) {
@@ -19,6 +20,7 @@ public record PurchaseOrderDto(
 				po.getInvoiceNumber(),
 				po.getReceivedAt().toString(),
 				po.getReceivedBy(),
+				po.getBranch(),
 				po.getLines().stream().map(PurchaseOrderLineDto::from).toList()
 		);
 	}

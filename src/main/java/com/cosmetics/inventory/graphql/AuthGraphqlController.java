@@ -54,6 +54,18 @@ public class AuthGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("isAuthenticated()")
+	public AuthPayload refreshToken(Authentication authentication) {
+		String email = (String) authentication.getPrincipal();
+		UserEntity user = userRepository.findByEmailIgnoreCase(email).orElseThrow();
+		if (!user.isActive()) {
+			throw new IllegalArgumentException("User is inactive");
+		}
+		List<String> roles = user.getRoles().stream().map(r -> r.getName().name()).toList();
+		return new AuthPayload(jwtService.createAccessToken(user.getEmail(), roles));
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
 	public boolean changeMyPassword(@Argument ChangeMyPasswordInput input, Authentication authentication) {
 		String email = (String) authentication.getPrincipal();
 		UserEntity user = userRepository.findByEmailIgnoreCase(email).orElseThrow();

@@ -47,6 +47,10 @@ public class ProductEntity {
 	@OrderBy("createdAt DESC")
 	private List<ProductBatchEntity> batches = new ArrayList<>();
 
+	@OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+	@OrderBy("id ASC")
+	private List<ProductUnitEntity> units = new ArrayList<>();
+
 	public Long getId() {
 		return id;
 	}
@@ -133,5 +137,9 @@ public class ProductEntity {
 
 	public List<ProductBatchEntity> getBatches() {
 		return batches;
+	}
+
+	public List<ProductUnitEntity> getUnits() {
+		return units;
 	}
 }

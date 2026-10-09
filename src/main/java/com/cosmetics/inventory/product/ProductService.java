@@ -31,7 +31,8 @@ public class ProductService {
 	public List<ProductEntity> findProducts(String query, Boolean active) {
 		if (query != null && !query.isBlank()) {
 			String q = query.trim();
-			return productRepository.findTop200ByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBarcodeContainingIgnoreCaseOrderByNameAsc(q, q, q);
+			List<ProductEntity> found = productRepository.findTop200ByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBarcodeContainingIgnoreCaseOrderByNameAsc(q, q, q);
+			return active == null ? found : found.stream().filter(p -> p.isActive() == active).toList();
 		}
 		if (active != null) {
 			return productRepository.findTop200ByActiveOrderByNameAsc(active);
@@ -55,6 +56,9 @@ public class ProductService {
 		p.setUnitOfMeasure(cmd.unitOfMeasure());
 		p.setBuyingPrice(cmd.buyingPrice() != null ? BigDecimal.valueOf(cmd.buyingPrice()) : null);
 		p.setSellingPrice(cmd.sellingPrice() != null ? BigDecimal.valueOf(cmd.sellingPrice()) : null);
+		p.setActive(cmd.active() == null || cmd.active());
+
+		applyUnits(p, cmd.units());
 
 		return productRepository.save(p);
 	}
@@ -76,7 +80,25 @@ public class ProductService {
 		if (cmd.unitOfMeasure() != null) p.setUnitOfMeasure(cmd.unitOfMeasure());
 		if (cmd.buyingPrice() != null) p.setBuyingPrice(BigDecimal.valueOf(cmd.buyingPrice()));
 		if (cmd.sellingPrice() != null) p.setSellingPrice(BigDecimal.valueOf(cmd.sellingPrice()));
+		if (cmd.units() != null) {
+			p.getUnits().clear();
+			applyUnits(p, cmd.units());
+		}
 		return productRepository.save(p);
+	}
+
+	private void applyUnits(ProductEntity p, List<UnitInput> units) {
+		if (units == null) return;
+		for (UnitInput u : units) {
+			if (u == null || u.name() == null || u.name().isBlank()) continue;
+			ProductUnitEntity unit = new ProductUnitEntity();
+			unit.setProduct(p);
+			unit.setName(u.name().trim());
+			unit.setPrice(u.price() != null ? BigDecimal.valueOf(u.price()) : null);
+			unit.setBuyingPrice(u.buyingPrice() != null ? BigDecimal.valueOf(u.buyingPrice()) : null);
+			unit.setQuantity(u.quantity() != null && u.quantity() > 0 ? u.quantity() : 1);
+			p.getUnits().add(unit);
+		}
 	}
 
 	@Transactional
@@ -141,10 +163,13 @@ public class ProductService {
 		return batchRepository.save(batch);
 	}
 
-	public record CreateProductCommand(String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice) {
+	public record UnitInput(String name, Double price, Double buyingPrice, Integer quantity) {
 	}
 
-	public record UpdateProductCommand(long id, String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice) {
+	public record CreateProductCommand(String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice, Boolean active, List<UnitInput> units) {
+	}
+
+	public record UpdateProductCommand(long id, String sku, String barcode, String name, String brand, String category, String variant, String unitOfMeasure, Double buyingPrice, Double sellingPrice, List<UnitInput> units) {
 	}
 
 	public record CreateBatchCommand(long productId, String batchNumber, String expiryDate, double costPrice, int quantityReceived, String location) {

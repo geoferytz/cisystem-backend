@@ -83,7 +83,7 @@ public class SalesService {
                 int qty = d.getQuantity();
                 if (qty <= 0) continue;
 
-                InventoryItemEntity inv = inventoryRepository.findByBatchIdAndLocation(batch.getId(), location)
+                InventoryItemEntity inv = inventoryRepository.findForUpdate(batch.getId(), location)
                         .orElseGet(() -> {
                             InventoryItemEntity i = new InventoryItemEntity();
                             i.setBatch(batch);
@@ -134,7 +134,7 @@ public class SalesService {
                     continue; // expired batch restriction
                 }
 
-                InventoryItemEntity inv = inventoryRepository.findByBatchIdAndLocation(batch.getId(), location).orElse(null);
+                InventoryItemEntity inv = inventoryRepository.findForUpdate(batch.getId(), location).orElse(null);
                 if (inv == null || inv.getQtyOnHand() <= 0) {
                     continue;
                 }

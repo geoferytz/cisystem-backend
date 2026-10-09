@@ -11,10 +11,13 @@ import java.util.List;
 public class ExpenseService {
 	private final ExpenseRepository expenseRepository;
 	private final ExpenseCategoryRepository categoryRepository;
+	private final com.cosmetics.inventory.branch.BranchScope branchScope;
 
-	public ExpenseService(ExpenseRepository expenseRepository, ExpenseCategoryRepository categoryRepository) {
+	public ExpenseService(ExpenseRepository expenseRepository, ExpenseCategoryRepository categoryRepository,
+			com.cosmetics.inventory.branch.BranchScope branchScope) {
 		this.expenseRepository = expenseRepository;
 		this.categoryRepository = categoryRepository;
+		this.branchScope = branchScope;
 	}
 
 	@Transactional(readOnly = true)
@@ -51,13 +54,17 @@ public class ExpenseService {
 		e.setDescription(cmd.description());
 		e.setAmount(amt);
 		e.setPaymentMethod(cmd.paymentMethod());
+		if (cmd.branch() != null) {
+			e.setBranch(cmd.branch());
+		}
 		e.setCreatedBy(createdBy);
 		return expenseRepository.save(e);
 	}
 
 	@Transactional
-	public ExpenseEntity update(UpdateExpenseCommand cmd) {
+	public ExpenseEntity update(UpdateExpenseCommand cmd, org.springframework.security.core.Authentication authentication) {
 		ExpenseEntity e = expenseRepository.findById(cmd.id()).orElseThrow();
+		branchScope.assertBranch(authentication, e.getBranch());
 
 		if (cmd.expenseDate() != null) {
 			e.setExpenseDate(cmd.expenseDate());
@@ -91,15 +98,17 @@ public class ExpenseService {
 	}
 
 	@Transactional
-	public boolean delete(long id) {
-		if (!expenseRepository.existsById(id)) {
+	public boolean delete(long id, org.springframework.security.core.Authentication authentication) {
+		ExpenseEntity e = expenseRepository.findById(id).orElse(null);
+		if (e == null) {
 			return false;
 		}
+		branchScope.assertBranch(authentication, e.getBranch());
 		expenseRepository.deleteById(id);
 		return true;
 	}
 
-	public record CreateExpenseCommand(LocalDate expenseDate, Long categoryId, String description, Double amount, ExpensePaymentMethod paymentMethod) {
+	public record CreateExpenseCommand(LocalDate expenseDate, Long categoryId, String description, Double amount, ExpensePaymentMethod paymentMethod, String branch) {
 	}
 
 	public record UpdateExpenseCommand(long id, LocalDate expenseDate, Long categoryId, String description, Double amount, ExpensePaymentMethod paymentMethod) {
