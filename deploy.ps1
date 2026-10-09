@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 # -- CONFIG ---------------------------------------------------
 $ImageName    = 'geofrey2025/cisystem-backend'
 $VersionFile  = '.backend-version'
-$SshHost      = 'root@164.68.122.5 '               # Contabo. Password-free? ssh-copy-id root@164.68.112.5
+$SshHost      = 'root@164.68.122.5'               # Contabo. Password-free? ssh-copy-id root@164.68.112.5
 $RemoteScript = '/tmp/remote-deploy-backend.sh'
 
 function Step([string]$m) { Write-Host "[*] $m" -ForegroundColor Cyan }
