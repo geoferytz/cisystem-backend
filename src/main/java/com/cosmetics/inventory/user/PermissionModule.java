@@ -1,12 +1,15 @@
 package com.cosmetics.inventory.user;
 
 public enum PermissionModule {
+	COUNTER,
 	PRODUCTS,
 	CATEGORIES,
 	INVENTORY,
 	STOCK_MOVEMENTS,
+	EXPIRY_ALERTS,
 	SALES,
 	MY_SALES,
+	CUSTOMERS,
 	PURCHASING,
 	EXPENSES,
 	EXPENSE_CATEGORIES,

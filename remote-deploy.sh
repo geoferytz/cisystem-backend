@@ -13,23 +13,31 @@ say() { echo "[backend] $*"; }
 
 # --- Tafuta deployment dir -------------------------------------------------
 # 1) Kama container ya backend inarun sasa, compose iliiwekea label yenye dir halisi.
-#    Hii ndiyo njia ya uhakika zaidi - hakuna kubahatisha path.
+#    LAzIMA filter mbili: 'service' pekee inapata hotel-backend/naboo-backend pia,
+#    kwani stacks zote hutumia service iitwayo "backend".
 DIR=""
-CID_OLD=$(docker ps -q --filter "label=com.docker.compose.service=$SERVICE" | head -1)
+CID_OLD=$(docker ps -q --filter "label=com.docker.compose.project=root" --filter "label=com.docker.compose.service=$SERVICE" | head -1)
 if [ -n "$CID_OLD" ]; then
     DIR=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$CID_OLD" 2>/dev/null)
     [ -n "$DIR" ] && say "Deployment dir (kutoka container inayorun): $DIR"
 fi
-# 2) Fallback: tafuta docker-compose file kwenye maeneo ya kawaida.
+# 2) Fallback: tafuta docker-compose file inayorejelea image repo yetu.
+IMAGE_REPO="${IMAGE%%:*}"
 if [ -z "$DIR" ]; then
     for d in /root /root/deployment /root/cisystem /opt/deployment /opt/cisystem /srv/deployment /home/*/deployment; do
         for f in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
-            if [ -f "$d/$f" ]; then DIR="$d"; say "Deployment dir (imepatikana kwa kutafuta): $DIR"; break 2; fi
+            if [ -f "$d/$f" ] && grep -q "$IMAGE_REPO" "$d/$f"; then DIR="$d"; say "Deployment dir (imepatikana kwa kutafuta): $DIR"; break 2; fi
         done
     done
 fi
 if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
     say "FATAL: sijaona deployment dir yenye docker-compose.yml. Weka DIR=... kwenye script hii."
+    exit 1
+fi
+# Ulinzi wa mwisho: compose ya DIR lazima irejelee image yetu - vinginevyo
+# tungeandika version kwenye env ya stack mbaya kisha tukaisambaratisha.
+if ! grep -q "$IMAGE_REPO" "$DIR"/docker-compose.y*ml 2>/dev/null; then
+    say "FATAL: compose kwenye $DIR hairejelei $IMAGE_REPO - nimekataa kugusa stack isiyo sahihi."
     exit 1
 fi
 

@@ -37,7 +37,7 @@ public class ProductService {
 		if (active != null) {
 			return productRepository.findTop200ByActiveOrderByNameAsc(active);
 		}
-		return productRepository.findAll();
+		return productRepository.findAllByOrderByIdDesc();
 	}
 
 	@Transactional

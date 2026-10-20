@@ -22,7 +22,7 @@ public class CategoryService {
 		if (active != null) {
 			return categoryRepository.findTop200ByActiveOrderByNameAsc(active);
 		}
-		return categoryRepository.findAll();
+		return categoryRepository.findAllByOrderByIdDesc();
 	}
 
 	@Transactional

@@ -120,7 +120,7 @@ public class CounterCartService {
     }
 
     @Transactional
-    public SalesOrderDto checkout(String id, long version, BigDecimal expectedTotal, Authentication authentication) {
+    public SalesOrderDto checkout(String id, long version, BigDecimal expectedTotal, BigDecimal discount, Long customerId, String paymentMethod, BigDecimal amountReceived, Authentication authentication) {
         CounterCartEntity cart = carts.lockById(id).orElseThrow(() -> new IllegalArgumentException("Held cart not found"));
         if (cart.getStatus() == CounterCartEntity.Status.COMPLETED) {
             return SalesOrderDto.from(orders.findById(cart.getCompletedSaleId())
@@ -134,6 +134,13 @@ public class CounterCartService {
         if (expectedTotal == null || expectedTotal.compareTo(total(cart)) != 0) {
             throw new IllegalArgumentException("The cart total changed. Review it before completing the sale.");
         }
+        BigDecimal d = discount == null ? BigDecimal.ZERO : discount;
+        if (d.signum() < 0) {
+            throw new IllegalArgumentException("Discount cannot be negative");
+        }
+        if (d.compareTo(total(cart)) > 0) {
+            throw new IllegalArgumentException("Discount cannot exceed the sale total");
+        }
         for (var line : cart.getLines()) {
             if (pricedProduct(line.productId).getSellingPrice().compareTo(line.unitPrice) != 0) {
                 throw new IllegalArgumentException("A selling price changed. Save the cart again to review current prices.");
@@ -141,7 +148,7 @@ public class CounterCartService {
         }
         var saleLines = cart.getLines().stream().sorted(Comparator.comparing(l -> l.productId))
                 .map(l -> new SalesService.CreateSaleLineCommand(l.productId, l.quantity, l.unitPrice.doubleValue(), l.location)).toList();
-        var order = sales.createSale(new SalesService.CreateSaleCommand(cart.getCustomer(), cart.getReferenceNumber(), saleLines), authentication);
+        var order = sales.createSale(new SalesService.CreateSaleCommand(cart.getCustomer(), customerId, cart.getReferenceNumber(), d, paymentMethod, amountReceived, saleLines), authentication);
         cart.setStatus(CounterCartEntity.Status.COMPLETED);
         cart.setCompletedSaleId(order.getId());
         cart.setUpdatedAt(Instant.now());

@@ -1,5 +1,7 @@
 package com.cosmetics.inventory.sales;
 
+import com.cosmetics.inventory.customer.CustomerEntity;
+import com.cosmetics.inventory.customer.CustomerRepository;
 import com.cosmetics.inventory.inventory.InventoryItemEntity;
 import com.cosmetics.inventory.inventory.InventoryRepository;
 import com.cosmetics.inventory.product.ProductBatchEntity;
@@ -19,33 +21,43 @@ import java.util.List;
 
 @Service
 public class SalesService {
+	public static final String WALK_IN_CUSTOMER_NAME = "My Customer";
 	private final SalesOrderRepository salesOrderRepository;
 	private final ProductRepository productRepository;
 	private final ProductBatchRepository batchRepository;
 	private final InventoryRepository inventoryRepository;
 	private final StockMovementRepository stockMovementRepository;
+	private final CustomerRepository customerRepository;
 
 	public SalesService(
 			SalesOrderRepository salesOrderRepository,
 			ProductRepository productRepository,
 			ProductBatchRepository batchRepository,
 			InventoryRepository inventoryRepository,
-			StockMovementRepository stockMovementRepository
+			StockMovementRepository stockMovementRepository,
+			CustomerRepository customerRepository
 	) {
 		this.salesOrderRepository = salesOrderRepository;
 		this.productRepository = productRepository;
 		this.batchRepository = batchRepository;
 		this.inventoryRepository = inventoryRepository;
 		this.stockMovementRepository = stockMovementRepository;
+		this.customerRepository = customerRepository;
 	}
 
 	@Transactional
 	public SalesOrderEntity createSale(CreateSaleCommand cmd, Authentication authentication) {
 		SalesOrderEntity so = new SalesOrderEntity();
-		so.setCustomer(cmd.customer());
-		so.setReferenceNumber(cmd.referenceNumber());
+		CustomerEntity cust = applyCustomer(so, cmd.customerId());
+		String ref = cmd.referenceNumber();
+		so.setReferenceNumber(ref != null && !ref.isBlank() ? ref.trim() : nextReference());
 		so.setSoldBy(authentication != null ? String.valueOf(authentication.getPrincipal()) : null);
-		applySaleLines(so, cmd.lines(), cmd.referenceNumber(), authentication);
+		BigDecimal subtotal = subtotal(cmd.lines());
+		so.setDiscount(validateDiscount(cmd.discount(), subtotal));
+		BigDecimal payable = subtotal.subtract(so.getDiscount());
+		applyPayment(so, cmd, payable);
+		requireRegisteredCustomerForDebt(cust, cmd.amountReceived(), payable);
+		applySaleLines(so, cmd.lines(), so.getReferenceNumber(), authentication);
 		return salesOrderRepository.save(so);
 	}
 
@@ -57,12 +69,103 @@ public class SalesService {
 		SalesOrderEntity so = salesOrderRepository.findById(cmd.id()).orElseThrow();
 		restoreInventoryForSale(so, authentication);
 
-		so.setCustomer(cmd.customer());
-		so.setReferenceNumber(cmd.referenceNumber());
+		CustomerEntity cust = applyCustomer(so, cmd.customerId());
+		String ref = cmd.referenceNumber();
+		if (ref != null && !ref.isBlank()) {
+			so.setReferenceNumber(ref.trim());
+		}
+		BigDecimal subtotal = subtotal(cmd.lines());
+		so.setDiscount(validateDiscount(cmd.discount(), subtotal));
+		BigDecimal payable = subtotal.subtract(so.getDiscount());
+		applyPayment(so, cmd, payable);
+		requireRegisteredCustomerForDebt(cust, cmd.amountReceived(), payable);
 
 		so.getLines().clear();
-		applySaleLines(so, cmd.lines(), cmd.referenceNumber(), authentication);
+		applySaleLines(so, cmd.lines(), so.getReferenceNumber(), authentication);
 		return salesOrderRepository.save(so);
+	}
+
+	private CustomerEntity applyCustomer(SalesOrderEntity so, Long customerId) {
+		CustomerEntity cust = (customerId == null || customerId <= 0)
+				? walkInCustomer()
+				: customerRepository.findById(customerId)
+						.orElseThrow(() -> new IllegalArgumentException("Customer not found"));
+		so.setCustomerRef(cust);
+		so.setCustomer(cust.getName());
+		return cust;
+	}
+
+	private CustomerEntity walkInCustomer() {
+		return customerRepository.findFirstByNameIgnoreCase(WALK_IN_CUSTOMER_NAME)
+				.orElseGet(() -> {
+					CustomerEntity c = new CustomerEntity();
+					c.setName(WALK_IN_CUSTOMER_NAME);
+					return customerRepository.save(c);
+				});
+	}
+
+	private static void requireRegisteredCustomerForDebt(CustomerEntity cust, java.math.BigDecimal received, java.math.BigDecimal payable) {
+		if (received != null && received.compareTo(payable) < 0 && WALK_IN_CUSTOMER_NAME.equalsIgnoreCase(cust.getName())) {
+			throw new IllegalArgumentException("Select a registered customer to sell on debt");
+		}
+	}
+
+	private String nextReference() {
+		java.time.LocalDate today = java.time.Instant.now().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+		String prefix = today.format(java.time.format.DateTimeFormatter.ofPattern("ddMMyy"));
+		java.time.Instant dayStart = today.atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+		long seq = salesOrderRepository.countBySoldAtGreaterThanEqual(dayStart);
+		String ref;
+		do {
+			ref = prefix + "-" + String.format("%04d", ++seq);
+		} while (salesOrderRepository.existsByReferenceNumber(ref));
+		return ref;
+	}
+
+	private void applyPayment(SalesOrderEntity so, Object cmd, BigDecimal payable) {
+		String method;
+		BigDecimal received;
+		if (cmd instanceof CreateSaleCommand c) {
+			method = c.paymentMethod();
+			received = c.amountReceived();
+		} else if (cmd instanceof UpdateSaleCommand u) {
+			method = u.paymentMethod();
+			received = u.amountReceived();
+		} else {
+			return;
+		}
+		if (method != null) {
+			method = method.trim();
+			if (method.length() > 40) {
+				throw new IllegalArgumentException("Invalid payment method");
+			}
+		}
+		so.setPaymentMethod(method == null || method.isBlank() ? null : method.trim());
+		if (received != null && received.signum() < 0) {
+			throw new IllegalArgumentException("Amount received cannot be negative");
+		}
+		so.setAmountReceived(received);
+	}
+
+	private BigDecimal subtotal(List<CreateSaleLineCommand> lines) {
+		if (lines == null) {
+			return BigDecimal.ZERO;
+		}
+		return lines.stream()
+				.filter(l -> l != null && l.quantity() > 0)
+				.map(l -> BigDecimal.valueOf(l.unitPrice()).multiply(BigDecimal.valueOf(l.quantity())))
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	private BigDecimal validateDiscount(BigDecimal discount, BigDecimal subtotal) {
+		BigDecimal d = discount == null ? BigDecimal.ZERO : discount;
+		if (d.signum() < 0) {
+			throw new IllegalArgumentException("Discount cannot be negative");
+		}
+		if (d.compareTo(subtotal) > 0) {
+			throw new IllegalArgumentException("Discount cannot exceed the sale total");
+		}
+		return d;
 	}
 
     @Transactional
@@ -167,10 +270,10 @@ public class SalesService {
         }
     }
 
-    public record CreateSaleCommand(String customer, String referenceNumber, List<CreateSaleLineCommand> lines) {
+    public record CreateSaleCommand(String customer, Long customerId, String referenceNumber, BigDecimal discount, String paymentMethod, BigDecimal amountReceived, List<CreateSaleLineCommand> lines) {
     }
 
-    public record UpdateSaleCommand(long id, String customer, String referenceNumber, List<CreateSaleLineCommand> lines) {
+    public record UpdateSaleCommand(long id, String customer, Long customerId, String referenceNumber, BigDecimal discount, String paymentMethod, BigDecimal amountReceived, List<CreateSaleLineCommand> lines) {
     }
 
     public record CreateSaleLineCommand(long productId, int quantity, double unitPrice, String location) {

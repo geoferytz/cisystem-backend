@@ -26,6 +26,8 @@ type Query {
   repurchaseProducts(branch: String): [RepurchaseProduct!]!
   pendingRepurchases(branch: String): [RepurchaseOrder!]!
   salesOrders(branch: String): [SalesOrder!]!
+  customers(query: String): [Customer!]!
+  customerPayments(customerId: ID!): [CustomerPayment!]!
   counterProducts(location: String): [CounterProduct!]!
   pendingCounterCarts: [CounterCart!]!
   counterExpenseCategories: [ExpenseCategory!]!
@@ -88,6 +90,9 @@ type Mutation {
   updatePurchase(input: UpdatePurchaseInput!): PurchaseOrder!
   deletePurchase(input: DeletePurchaseInput!): Boolean!
   createSale(input: CreateSaleInput!): SalesOrder!
+  createCustomer(input: CreateCustomerInput!): Customer!
+  updateCustomer(input: UpdateCustomerInput!): Customer!
+  recordCustomerPayment(customerId: ID!, amount: Float!, paidAt: String): [CustomerPayment!]!
   saveCounterCart(input: SaveCounterCartInput!): CounterCart!
   checkoutCounterCart(input: CheckoutCounterCartInput!): SalesOrder!
   cancelCounterCart(input: CounterCartVersionInput!): Boolean!
@@ -360,6 +365,10 @@ input CheckoutCounterCartInput {
   id: ID!
   version: Int!
   expectedTotal: Float!
+  discount: Float
+  customerId: ID
+  paymentMethod: String
+  amountReceived: Float
 }
 
 input CounterCartVersionInput {
@@ -370,10 +379,32 @@ input CounterCartVersionInput {
 type SalesOrder {
   id: ID!
   customer: String
+  customerId: ID
   referenceNumber: String
   soldAt: String!
   soldBy: String
+  discount: Float
+  paymentMethod: String
+  amountReceived: Float
   lines: [SalesOrderLine!]!
+}
+
+type Customer {
+  id: ID!
+  name: String!
+  phone: String
+  email: String
+  address: String
+  createdAt: String!
+  createdBy: String
+}
+
+type CustomerPayment {
+  id: ID!
+  customerId: ID!
+  salesOrderId: ID!
+  amount: Float!
+  paidAt: String!
 }
 
 type SalesOrderLine {
@@ -435,6 +466,7 @@ type DailySalesReport {
   totalSalesAmount: Float!
   totalCostAmount: Float!
   totalProfitAmount: Float!
+  totalDiscountAmount: Float!
   items: [DailySalesReportItem!]!
 }
 
@@ -744,15 +776,38 @@ input ReceivePurchaseLineInput {
 
 input CreateSaleInput {
   customer: String
+  customerId: ID
   referenceNumber: String
+  discount: Float
+  paymentMethod: String
+  amountReceived: Float
   lines: [CreateSaleLineInput!]!
 }
 
 input UpdateSaleInput {
   id: ID!
   customer: String
+  customerId: ID
   referenceNumber: String
+  discount: Float
+  paymentMethod: String
+  amountReceived: Float
   lines: [CreateSaleLineInput!]!
+}
+
+input CreateCustomerInput {
+  name: String!
+  phone: String
+  email: String
+  address: String
+}
+
+input UpdateCustomerInput {
+  id: ID!
+  name: String!
+  phone: String
+  email: String
+  address: String
 }
 
 input DeleteSaleInput {

@@ -16,6 +16,7 @@ import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +44,7 @@ public class AdminUserGraphqlController {
 	@Transactional(readOnly = true)
 	public List<AdminUserDto> users(Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
-		return userRepository.findAll().stream().map(AdminUserDto::from).toList();
+		return userRepository.findAllByOrderByIdDesc().stream().map(AdminUserDto::from).toList();
 	}
 
 	@QueryMapping
@@ -97,10 +98,21 @@ public class AdminUserGraphqlController {
 
 	@MutationMapping
 	@PreAuthorize("isAuthenticated()")
+	@Transactional
 	public boolean deleteUser(Authentication authentication, @Argument long userId) {
 		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.DELETE);
-		UserEntity user = userRepository.findById(userId).orElseThrow();
-		userRepository.delete(user);
+		UserEntity user = userRepository.findById(userId)
+				.orElseThrow(() -> new IllegalArgumentException("User not found"));
+		if (user.getEmail().equalsIgnoreCase(String.valueOf(authentication.getPrincipal()))) {
+			throw new IllegalArgumentException("You cannot delete your own account");
+		}
+		try {
+			userRepository.delete(user);
+			userRepository.flush();
+		} catch (DataIntegrityViolationException e) {
+			throw new IllegalArgumentException(
+					"User cannot be deleted because they have records in the system (sales, expenses, transfers, etc.). Deactivate the account instead.");
+		}
 		return true;
 	}
 

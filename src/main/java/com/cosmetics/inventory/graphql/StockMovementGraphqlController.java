@@ -33,7 +33,7 @@ public class StockMovementGraphqlController {
 		Long productId = filter != null ? filter.productId() : null;
 		Long batchId = filter != null ? filter.batchId() : null;
 
-		return stockMovementRepository.findAll().stream()
+		return stockMovementRepository.findAllByOrderByCreatedAtDesc().stream()
 				.filter(mv -> type == null || type.isBlank() || mv.getType().name().equalsIgnoreCase(type.trim()))
 				.filter(mv -> productId == null || mv.getBatch().getProduct().getId().equals(productId))
 				.filter(mv -> batchId == null || mv.getBatch().getId().equals(batchId))

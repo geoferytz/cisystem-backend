@@ -15,4 +15,6 @@ public interface ProductRepository extends JpaRepository<ProductEntity, Long> {
 	);
 
 	List<ProductEntity> findTop200ByActiveOrderByNameAsc(boolean active);
+
+	List<ProductEntity> findAllByOrderByIdDesc();
 }

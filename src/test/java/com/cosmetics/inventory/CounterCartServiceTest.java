@@ -78,7 +78,7 @@ class CounterCartServiceTest {
         service.save(command(2, null), user);
         ReflectionTestUtils.setField(persisted, "version", 2L);
         assertThrows(IllegalArgumentException.class, () -> service.save(command(3, 1L), user));
-        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 1, new BigDecimal("25.00"), user));
+        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 1, new BigDecimal("25.00"), null, null, null, null, user));
         verifyNoInteractions(sales);
     }
 
@@ -89,8 +89,8 @@ class CounterCartServiceTest {
         ReflectionTestUtils.setField(order, "id", 10L);
         when(sales.createSale(any(), eq(user))).thenReturn(order);
         when(orders.findById(10L)).thenReturn(Optional.of(order));
-        assertEquals(10L, service.checkout(id, 0, new BigDecimal("25.00"), user).id());
-        assertEquals(10L, service.checkout(id, 0, new BigDecimal("25.00"), user).id());
+        assertEquals(10L, service.checkout(id, 0, new BigDecimal("25.00"), null, null, null, null, user).id());
+        assertEquals(10L, service.checkout(id, 0, new BigDecimal("25.00"), null, null, null, null, user).id());
         verify(sales, times(1)).createSale(any(), eq(user));
         assertEquals(CounterCartEntity.Status.COMPLETED, persisted.getStatus());
     }
@@ -98,9 +98,9 @@ class CounterCartServiceTest {
     @Test
     void changedPricesAndTotalsRequireAnotherReview() {
         service.save(command(2, null), user);
-        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, BigDecimal.ONE, user));
+        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, BigDecimal.ONE, null, null, null, null, user));
         product.setSellingPrice(new BigDecimal("15.00"));
-        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), user));
+        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), null, null, null, null, user));
         verifyNoInteractions(sales);
     }
 
@@ -108,7 +108,7 @@ class CounterCartServiceTest {
     void stockFailureLeavesTheCartPending() {
         service.save(command(2, null), user);
         when(sales.createSale(any(), eq(user))).thenThrow(new IllegalArgumentException("Insufficient stock"));
-        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), user));
+        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), null, null, null, null, user));
         assertEquals(CounterCartEntity.Status.PENDING, persisted.getStatus());
         assertNull(persisted.getCompletedSaleId());
     }
@@ -117,7 +117,7 @@ class CounterCartServiceTest {
     void cancelledCartCannotBeCharged() {
         service.save(command(2, null), user);
         assertTrue(service.cancel(id, 0, user));
-        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), user));
+        assertThrows(IllegalArgumentException.class, () -> service.checkout(id, 0, new BigDecimal("25.00"), null, null, null, null, user));
         verifyNoInteractions(sales);
     }
 }

@@ -11,4 +11,6 @@ public interface CategoryRepository extends JpaRepository<CategoryEntity, Long> 
 	List<CategoryEntity> findTop200ByNameContainingIgnoreCaseOrderByNameAsc(String name);
 
 	List<CategoryEntity> findTop200ByActiveOrderByNameAsc(boolean active);
+
+	List<CategoryEntity> findAllByOrderByIdDesc();
 }

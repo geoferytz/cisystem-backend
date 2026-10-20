@@ -45,7 +45,7 @@ public class SalesGraphqlController {
 	public List<SalesOrderDto> salesOrders(@Argument String branch, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.VIEW);
 		String scoped = branchScope.scopeFilter(authentication, branch);
-		return salesOrderRepository.findAll().stream()
+		return salesOrderRepository.findAllByOrderBySoldAtDescIdDesc().stream()
 				.filter(o -> scoped == null || o.getLines().stream()
 						.anyMatch(l -> l.getLocation() != null && l.getLocation().equalsIgnoreCase(scoped)))
 				.map(SalesOrderDto::from).toList();
@@ -58,7 +58,11 @@ public class SalesGraphqlController {
 		var so = salesService.createSale(
 				new SalesService.CreateSaleCommand(
 						input.customer(),
+						input.customerId(),
 						input.referenceNumber(),
+						input.discount() == null ? null : java.math.BigDecimal.valueOf(input.discount()),
+						input.paymentMethod(),
+						input.amountReceived() == null ? null : java.math.BigDecimal.valueOf(input.amountReceived()),
 						input.lines().stream().map(l -> new SalesService.CreateSaleLineCommand(
 								l.productId(),
 								l.quantity(),
@@ -75,7 +79,7 @@ public class SalesGraphqlController {
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public SalesOrderDto updateSale(@Argument UpdateSaleInput input, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.EDIT);
-		var existing = salesOrderRepository.findById(input.id()).orElseThrow();
+		var existing = salesOrderRepository.findWithLinesById(input.id()).orElseThrow();
 		for (var line : existing.getLines()) {
 			branchScope.assertBranch(authentication, line.getLocation());
 		}
@@ -83,7 +87,11 @@ public class SalesGraphqlController {
 				new SalesService.UpdateSaleCommand(
 						input.id(),
 						input.customer(),
+						input.customerId(),
 						input.referenceNumber(),
+						input.discount() == null ? null : java.math.BigDecimal.valueOf(input.discount()),
+						input.paymentMethod(),
+						input.amountReceived() == null ? null : java.math.BigDecimal.valueOf(input.amountReceived()),
 						input.lines().stream().map(l -> new SalesService.CreateSaleLineCommand(
 								l.productId(),
 								l.quantity(),
@@ -100,7 +108,7 @@ public class SalesGraphqlController {
 	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
 	public boolean deleteSale(@Argument DeleteSaleInput input, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.DELETE);
-		var existing = salesOrderRepository.findById(input.id()).orElseThrow();
+		var existing = salesOrderRepository.findWithLinesById(input.id()).orElseThrow();
 		for (var line : existing.getLines()) {
 			branchScope.assertBranch(authentication, line.getLocation());
 		}
@@ -131,13 +139,13 @@ public class SalesGraphqlController {
 		}
 	}
 
-	public record CreateSaleInput(String customer, String referenceNumber, List<CreateSaleLineInput> lines) {
+	public record CreateSaleInput(String customer, Long customerId, String referenceNumber, Double discount, String paymentMethod, Double amountReceived, List<CreateSaleLineInput> lines) {
 	}
 
 	public record CreateSaleLineInput(long productId, int quantity, double unitPrice, String location) {
 	}
 
-	public record UpdateSaleInput(long id, String customer, String referenceNumber, List<CreateSaleLineInput> lines) {
+	public record UpdateSaleInput(long id, String customer, Long customerId, String referenceNumber, Double discount, String paymentMethod, Double amountReceived, List<CreateSaleLineInput> lines) {
 	}
 
 	public record DeleteSaleInput(long id, String adminCode) {

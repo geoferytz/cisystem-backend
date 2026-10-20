@@ -14,6 +14,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -48,6 +49,7 @@ public class AlertsReportsGraphqlController {
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
 	public List<ExpiryAlertDto> expiryAlerts(@Argument int days, @Argument String branch, Authentication authentication) {
+		permissionGuard.requireAny(authentication, PermissionsService.PermissionAction.VIEW, PermissionModule.EXPIRY_ALERTS, PermissionModule.INVENTORY, PermissionModule.REPORTS);
 		LocalDate today = LocalDate.now();
 		LocalDate until = today.plusDays(days);
 		String scoped = branchScope.scopeFilter(authentication, branch);
@@ -90,8 +92,27 @@ public class AlertsReportsGraphqlController {
 
 		BigDecimal totalSales = BigDecimal.ZERO;
 		BigDecimal totalCost = BigDecimal.ZERO;
+		BigDecimal totalDiscount = BigDecimal.ZERO;
 
 		for (var so : orders) {
+			BigDecimal orderSubtotal = BigDecimal.ZERO;
+			for (var line : so.getLines()) {
+				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
+					continue;
+				}
+				orderSubtotal = orderSubtotal.add(line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity())));
+			}
+			if (orderSubtotal.signum() <= 0) {
+				continue;
+			}
+			BigDecimal orderDiscount = so.getDiscount() != null ? so.getDiscount() : BigDecimal.ZERO;
+			if (orderDiscount.signum() < 0) {
+				orderDiscount = BigDecimal.ZERO;
+			} else if (orderDiscount.compareTo(orderSubtotal) > 0) {
+				orderDiscount = orderSubtotal;
+			}
+			totalDiscount = totalDiscount.add(orderDiscount);
+
 			for (var line : so.getLines()) {
 				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
 					continue;
@@ -100,6 +121,9 @@ public class AlertsReportsGraphqlController {
 				long productId = p.getId();
 				int qty = line.getQuantity();
 				BigDecimal salesAmount = line.getUnitPrice().multiply(BigDecimal.valueOf(qty));
+				BigDecimal netSales = orderDiscount.signum() > 0
+						? salesAmount.subtract(orderDiscount.multiply(salesAmount).divide(orderSubtotal, 4, RoundingMode.HALF_UP))
+						: salesAmount;
 				BigDecimal costAmount = line.getDeductions().stream()
 						.map(d -> d.getBatch().getCostPrice().multiply(BigDecimal.valueOf(d.getQuantity())))
 						.reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -119,7 +143,7 @@ public class AlertsReportsGraphqlController {
 				}
 
 				int newQty = acc.quantitySold() + qty;
-				double newSales = acc.salesAmount() + salesAmount.doubleValue();
+				double newSales = acc.salesAmount() + netSales.doubleValue();
 				double newCost = acc.costAmount() + costAmount.doubleValue();
 				double newProfit = newSales - newCost;
 				itemsByProduct.put(productId, new DailySalesReportItemDto(
@@ -132,7 +156,7 @@ public class AlertsReportsGraphqlController {
 						newProfit
 				));
 
-				totalSales = totalSales.add(salesAmount);
+				totalSales = totalSales.add(netSales);
 				totalCost = totalCost.add(costAmount);
 			}
 		}
@@ -143,6 +167,7 @@ public class AlertsReportsGraphqlController {
 				totalSales.doubleValue(),
 				totalCost.doubleValue(),
 				totalProfit,
+				totalDiscount.doubleValue(),
 				itemsByProduct.values().stream()
 						.sorted(Comparator.comparing(DailySalesReportItemDto::salesAmount).reversed())
 						.toList()
@@ -168,18 +193,39 @@ public class AlertsReportsGraphqlController {
 
 		for (var so : orders) {
 			LocalDate day = so.getSoldAt().atZone(ZoneOffset.UTC).toLocalDate();
-			double[] acc = totals.computeIfAbsent(day, k -> new double[2]);
+			BigDecimal orderSubtotal = BigDecimal.ZERO;
+			for (var line : so.getLines()) {
+				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
+					continue;
+				}
+				orderSubtotal = orderSubtotal.add(line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity())));
+			}
+			if (orderSubtotal.signum() <= 0) {
+				continue;
+			}
+			BigDecimal orderDiscount = so.getDiscount() != null ? so.getDiscount() : BigDecimal.ZERO;
+			if (orderDiscount.signum() < 0) {
+				orderDiscount = BigDecimal.ZERO;
+			} else if (orderDiscount.compareTo(orderSubtotal) > 0) {
+				orderDiscount = orderSubtotal;
+			}
+
+			double[] acc = totals.computeIfAbsent(day, k -> new double[3]);
 			for (var line : so.getLines()) {
 				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
 					continue;
 				}
 				BigDecimal salesAmount = line.getUnitPrice().multiply(BigDecimal.valueOf(line.getQuantity()));
+				BigDecimal netSales = orderDiscount.signum() > 0
+						? salesAmount.subtract(orderDiscount.multiply(salesAmount).divide(orderSubtotal, 4, RoundingMode.HALF_UP))
+						: salesAmount;
 				BigDecimal costAmount = line.getDeductions().stream()
 						.map(d -> d.getBatch().getCostPrice().multiply(BigDecimal.valueOf(d.getQuantity())))
 						.reduce(BigDecimal.ZERO, BigDecimal::add);
-				acc[0] += salesAmount.doubleValue();
+				acc[0] += netSales.doubleValue();
 				acc[1] += costAmount.doubleValue();
 			}
+			acc[2] += orderDiscount.doubleValue();
 		}
 
 		return totals.entrySet().stream()
@@ -188,6 +234,7 @@ public class AlertsReportsGraphqlController {
 						e.getValue()[0],
 						e.getValue()[1],
 						e.getValue()[0] - e.getValue()[1],
+						e.getValue()[2],
 						List.of()
 				))
 				.toList();
@@ -197,6 +244,7 @@ public class AlertsReportsGraphqlController {
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
 	public List<LowStockAlertDto> lowStockAlerts(@Argument int threshold, @Argument String branch, Authentication authentication) {
+		permissionGuard.requireAny(authentication, PermissionsService.PermissionAction.VIEW, PermissionModule.EXPIRY_ALERTS, PermissionModule.INVENTORY, PermissionModule.REPORTS);
 		String scoped = branchScope.scopeFilter(authentication, branch);
 		Map<Long, Integer> qtyByProduct = inventoryRepository.findAll().stream()
 				.filter(i -> i.getQtyOnHand() > 0)
@@ -226,6 +274,7 @@ public class AlertsReportsGraphqlController {
 	@PreAuthorize("isAuthenticated()")
 	@Transactional(readOnly = true)
 	public List<LowStockBatchAlertDto> lowStockBatchAlerts(@Argument int threshold, @Argument String branch, Authentication authentication) {
+		permissionGuard.requireAny(authentication, PermissionsService.PermissionAction.VIEW, PermissionModule.EXPIRY_ALERTS, PermissionModule.INVENTORY, PermissionModule.REPORTS);
 		String scoped = branchScope.scopeFilter(authentication, branch);
 		return inventoryRepository.findAll().stream()
 				.filter(i -> scoped == null || i.getLocation().equalsIgnoreCase(scoped))
@@ -330,6 +379,7 @@ public class AlertsReportsGraphqlController {
 			double totalSalesAmount,
 			double totalCostAmount,
 			double totalProfitAmount,
+			double totalDiscountAmount,
 			List<DailySalesReportItemDto> items
 	) {
 	}

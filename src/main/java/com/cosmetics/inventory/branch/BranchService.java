@@ -21,7 +21,7 @@ public class BranchService {
 		if (active != null) {
 			return branchRepository.findTop200ByActiveOrderByNameAsc(active);
 		}
-		return branchRepository.findAll();
+		return branchRepository.findAllByOrderByIdDesc();
 	}
 
 	@Transactional

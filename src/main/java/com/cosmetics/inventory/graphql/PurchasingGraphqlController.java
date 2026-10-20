@@ -41,7 +41,7 @@ public class PurchasingGraphqlController {
 	public List<PurchaseOrderDto> purchaseOrders(Authentication authentication, @Argument String branch) {
 		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.VIEW);
 		String scoped = branchScope.scopeFilter(authentication, branch);
-		return purchaseOrderRepository.findAll().stream()
+		return purchaseOrderRepository.findAllByOrderByIdDesc().stream()
 				.filter(po -> scoped == null || scoped.equalsIgnoreCase(po.getBranch()))
 				.map(PurchaseOrderDto::from).toList();
 	}

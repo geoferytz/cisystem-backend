@@ -33,14 +33,14 @@ public class CounterGraphqlController {
 
     @QueryMapping
     public List<CounterCartService.ProductDto> counterProducts(@Argument String location, Authentication authentication) {
-        permissions.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.CREATE);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.COUNTER, PermissionModule.SALES);
         return service.products(branchScope.resolveLocation(authentication, location));
     }
 
     @QueryMapping
     @PreAuthorize("isAuthenticated()")
     public List<CounterCartService.CartDto> pendingCounterCarts(Authentication authentication) {
-        permissions.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.VIEW);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.VIEW, PermissionModule.COUNTER, PermissionModule.SALES);
         String locked = branchScope.lockedBranchCode(authentication);
         var carts = service.pending();
         if (locked == null) {
@@ -54,13 +54,13 @@ public class CounterGraphqlController {
 
     @QueryMapping
     public List<ExpenseCategoryEntity> counterExpenseCategories(Authentication authentication) {
-        permissions.require(authentication, PermissionModule.EXPENSES, PermissionsService.PermissionAction.CREATE);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.COUNTER, PermissionModule.EXPENSES);
         return expenseCategories.findTop200ByActiveOrderByNameAsc(true);
     }
 
     @MutationMapping
     public CounterCartService.CartDto saveCounterCart(@Argument CounterCartService.SaveCartCommand input, Authentication authentication) {
-        permissions.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.CREATE);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.COUNTER, PermissionModule.SALES);
         var lines = input.lines() == null ? null : input.lines().stream()
                 .map(l -> new CounterCartService.LineCommand(
                         l.productId(),
@@ -73,17 +73,19 @@ public class CounterGraphqlController {
 
     @MutationMapping
     public SalesOrderDto checkoutCounterCart(@Argument CheckoutInput input, Authentication authentication) {
-        permissions.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.CREATE);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.COUNTER, PermissionModule.SALES);
         if (input.expectedTotal() == null || !Double.isFinite(input.expectedTotal())) throw new IllegalArgumentException("A valid total is required");
-        return service.checkout(input.id(), input.version(), BigDecimal.valueOf(input.expectedTotal()), authentication);
+        if (input.discount() != null && !Double.isFinite(input.discount())) throw new IllegalArgumentException("A valid discount is required");
+        if (input.amountReceived() != null && !Double.isFinite(input.amountReceived())) throw new IllegalArgumentException("A valid amount is required");
+        return service.checkout(input.id(), input.version(), BigDecimal.valueOf(input.expectedTotal()), input.discount() == null ? null : BigDecimal.valueOf(input.discount()), input.customerId(), input.paymentMethod(), input.amountReceived() == null ? null : BigDecimal.valueOf(input.amountReceived()), authentication);
     }
 
     @MutationMapping
     public boolean cancelCounterCart(@Argument CartVersionInput input, Authentication authentication) {
-        permissions.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.DELETE);
+        permissions.requireAny(authentication, PermissionsService.PermissionAction.DELETE, PermissionModule.COUNTER, PermissionModule.SALES);
         return service.cancel(input.id(), input.version(), authentication);
     }
 
-    public record CheckoutInput(String id, long version, Double expectedTotal) {}
+    public record CheckoutInput(String id, long version, Double expectedTotal, Double discount, Long customerId, String paymentMethod, Double amountReceived) {}
     public record CartVersionInput(String id, long version) {}
 }
