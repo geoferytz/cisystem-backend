@@ -63,7 +63,7 @@ public class PurchasingService {
 
 			ProductBatchEntity batch = new ProductBatchEntity();
 			batch.setProduct(product);
-			batch.setBatchNumber(line.batchNumber().trim());
+			batch.setBatchNumber(resolveBatchNumber(line));
 			batch.setExpiryDate(LocalDate.parse(line.expiryDate()));
 			batch.setCostPrice(BigDecimal.valueOf(line.costPrice()));
 			batch.setQuantityReceived(line.quantityReceived());
@@ -157,6 +157,18 @@ public class PurchasingService {
 		}
 	}
 
+	private String resolveBatchNumber(ReceivePurchaseLineCommand line) {
+		if (line.batchNumber() != null && !line.batchNumber().isBlank()) {
+			return line.batchNumber().trim();
+		}
+		long next = batchRepository.findByProductIdOrderByExpiryDateAscCreatedAtAsc(line.productId()).size() + 1;
+		String candidate;
+		do {
+			candidate = String.format("B%d-%04d", line.productId(), next++);
+		} while (batchRepository.findByProductIdAndBatchNumberIgnoreCase(line.productId(), candidate).isPresent());
+		return candidate;
+	}
+
 	private void applyPurchaseLines(PurchaseOrderEntity po, List<ReceivePurchaseLineCommand> lines, String invoice, String branch, Authentication authentication) {
 		if (lines == null || lines.isEmpty()) {
 			throw new IllegalArgumentException("At least one line is required");
@@ -166,7 +178,7 @@ public class PurchasingService {
 
 			ProductBatchEntity batch = new ProductBatchEntity();
 			batch.setProduct(product);
-			batch.setBatchNumber(line.batchNumber().trim());
+			batch.setBatchNumber(resolveBatchNumber(line));
 			batch.setExpiryDate(LocalDate.parse(line.expiryDate()));
 			batch.setCostPrice(BigDecimal.valueOf(line.costPrice()));
 			batch.setQuantityReceived(line.quantityReceived());

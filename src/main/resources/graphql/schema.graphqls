@@ -28,6 +28,7 @@ type Query {
   salesOrders(branch: String): [SalesOrder!]!
   customers(query: String): [Customer!]!
   customerPayments(customerId: ID!): [CustomerPayment!]!
+  customerDebt(customerId: ID!): Float!
   counterProducts(location: String): [CounterProduct!]!
   pendingCounterCarts: [CounterCart!]!
   counterExpenseCategories: [ExpenseCategory!]!
@@ -669,7 +670,7 @@ input ProductUnitInput {
 }
 
 input CreateProductInput {
-  sku: String!
+  sku: String
   barcode: String
   name: String!
   brand: String
@@ -703,7 +704,7 @@ input SetProductStatusInput {
 
 input CreateBatchInput {
   productId: ID!
-  batchNumber: String!
+  batchNumber: String
   expiryDate: String!
   costPrice: Float!
   quantityReceived: Int!

@@ -103,6 +103,27 @@ public class CustomerGraphqlController {
 				.toList();
 	}
 
+	@QueryMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional(readOnly = true)
+	public Double customerDebt(@Argument Long customerId, Authentication authentication) {
+		requireAny(authentication, PermissionsService.PermissionAction.VIEW);
+		if (customerId == null || customerId <= 0) {
+			return 0.0;
+		}
+		BigDecimal debt = BigDecimal.ZERO;
+		for (SalesOrderEntity order : salesOrderRepository.findWithLinesByCustomerId(customerId)) {
+			BigDecimal net = order.getLines().stream()
+					.map(l -> l.getUnitPrice().multiply(BigDecimal.valueOf(l.getQuantity())))
+					.reduce(BigDecimal.ZERO, BigDecimal::add)
+					.subtract(order.getDiscount() != null ? order.getDiscount() : BigDecimal.ZERO)
+					.max(BigDecimal.ZERO);
+			BigDecimal received = order.getAmountReceived() != null ? order.getAmountReceived() : net;
+			debt = debt.add(net.subtract(received).max(BigDecimal.ZERO));
+		}
+		return debt.doubleValue();
+	}
+
 	@MutationMapping
 	@PreAuthorize("isAuthenticated()")
 	@Transactional

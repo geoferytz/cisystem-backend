@@ -112,9 +112,7 @@ public class RepurchaseService {
             if (line.expiryDate != null && line.expiryDate.isBefore(LocalDate.now())) {
                 throw new IllegalArgumentException("Expiry date cannot be in the past for " + product.getName());
             }
-            if (line.expiryDate != null && (line.batchNumber == null || line.batchNumber.isBlank())) {
-                throw new IllegalArgumentException("Batch number is required when expiry date is provided for " + product.getName());
-            }
+
             line.location = text(input.location(), 120);
             order.lines.add(line);
         }

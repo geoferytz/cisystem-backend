@@ -7,6 +7,7 @@ import java.util.Optional;
 
 public interface ProductRepository extends JpaRepository<ProductEntity, Long> {
 	Optional<ProductEntity> findBySkuIgnoreCase(String sku);
+	Optional<ProductEntity> findTopByOrderByIdDesc();
 
 	List<ProductEntity> findTop200ByNameContainingIgnoreCaseOrSkuContainingIgnoreCaseOrBarcodeContainingIgnoreCaseOrderByNameAsc(
 			String name,

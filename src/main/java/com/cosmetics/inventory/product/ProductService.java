@@ -42,12 +42,13 @@ public class ProductService {
 
 	@Transactional
 	public ProductEntity createProduct(CreateProductCommand cmd) {
-		productRepository.findBySkuIgnoreCase(cmd.sku()).ifPresent(p -> {
+		String sku = (cmd.sku() != null && !cmd.sku().isBlank()) ? cmd.sku().trim() : nextSku();
+		productRepository.findBySkuIgnoreCase(sku).ifPresent(p -> {
 			throw new IllegalArgumentException("SKU already exists");
 		});
 
 		ProductEntity p = new ProductEntity();
-		p.setSku(cmd.sku().trim());
+		p.setSku(sku);
 		p.setBarcode(cmd.barcode());
 		p.setName(cmd.name().trim());
 		p.setBrand(cmd.brand());
@@ -101,6 +102,24 @@ public class ProductService {
 		}
 	}
 
+	private String nextSku() {
+		long next = productRepository.findTopByOrderByIdDesc().map(ProductEntity::getId).orElse(0L) + 1;
+		String candidate;
+		do {
+			candidate = String.format("PRD-%05d", next++);
+		} while (productRepository.findBySkuIgnoreCase(candidate).isPresent());
+		return candidate;
+	}
+
+	private String nextBatchNumber(long productId) {
+		long next = batchRepository.findByProductIdOrderByExpiryDateAscCreatedAtAsc(productId).size() + 1;
+		String candidate;
+		do {
+			candidate = String.format("B%d-%04d", productId, next++);
+		} while (batchRepository.findByProductIdAndBatchNumberIgnoreCase(productId, candidate).isPresent());
+		return candidate;
+	}
+
 	@Transactional
 	public ProductEntity setProductStatus(long id, boolean active) {
 		ProductEntity p = productRepository.findById(id).orElseThrow();
@@ -114,7 +133,7 @@ public class ProductService {
 
 		ProductBatchEntity batch = new ProductBatchEntity();
 		batch.setProduct(p);
-		batch.setBatchNumber(cmd.batchNumber().trim());
+		batch.setBatchNumber((cmd.batchNumber() != null && !cmd.batchNumber().isBlank()) ? cmd.batchNumber().trim() : nextBatchNumber(p.getId()));
 		batch.setExpiryDate(LocalDate.parse(cmd.expiryDate()));
 		batch.setCostPrice(BigDecimal.valueOf(cmd.costPrice()));
 		batch.setQuantityReceived(cmd.quantityReceived());

@@ -61,6 +61,7 @@ public class InventoryGraphqlController {
 							|| p.getName().toLowerCase().contains(q)
 							|| i.getBatch().getBatchNumber().toLowerCase().contains(q);
 				})
+				.sorted(java.util.Comparator.comparingLong((InventoryItemEntity i) -> i.getBatch().getId()).reversed())
 				.map(InventoryItemDto::from)
 				.toList();
 	}
