@@ -57,7 +57,7 @@ class RepurchaseServiceTest {
     }
 
     private List<RepurchaseService.ReceiptLine> receipt() {
-        return List.of(new RepurchaseService.ReceiptLine(1L, "RP-1", LocalDate.now().plusYears(1).toString()));
+        return List.of(new RepurchaseService.ReceiptLine(1L, "RP-1", LocalDate.now().plusYears(1).toString(), null));
     }
 
     @Test
@@ -98,7 +98,7 @@ class RepurchaseServiceTest {
         service.submit(command(5, "6"), user);
         assertThrows(IllegalArgumentException.class, () -> service.receive(id, List.of(), user));
         assertThrows(IllegalArgumentException.class, () -> service.receive(id,
-                List.of(new RepurchaseService.ReceiptLine(1L, "B1", LocalDate.now().minusDays(1).toString())), user));
+                List.of(new RepurchaseService.ReceiptLine(1L, "B1", LocalDate.now().minusDays(1).toString(), null)), user));
         verifyNoInteractions(purchasing);
     }
 

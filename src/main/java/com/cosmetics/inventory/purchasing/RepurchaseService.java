@@ -129,10 +129,11 @@ public class RepurchaseService {
         }
         Map<Long, ReceiptLine> byProduct = new HashMap<>();
         for (var receipt : receipts) {
-            if (byProduct.put(receipt.productId(), receipt) != null || receipt.batchNumber() == null
-                    || receipt.batchNumber().isBlank() || receipt.batchNumber().trim().length() > 80
-                    || receipt.expiryDate() == null || LocalDate.parse(receipt.expiryDate()).isBefore(LocalDate.now())) {
-                throw new IllegalArgumentException("Provide unique products, batch codes and non-expired expiry dates");
+            if (byProduct.put(receipt.productId(), receipt) != null
+                    || (receipt.batchNumber() != null && receipt.batchNumber().trim().length() > 80)
+                    || receipt.expiryDate() == null || LocalDate.parse(receipt.expiryDate()).isBefore(LocalDate.now())
+                    || (receipt.quantity() != null && receipt.quantity() <= 0)) {
+                throw new IllegalArgumentException("Provide unique products, valid expiry dates and positive quantities");
             }
         }
         var purchaseLines = new ArrayList<PurchasingService.ReceivePurchaseLineCommand>();
@@ -153,8 +154,9 @@ public class RepurchaseService {
                 if (sellingChanged) product.setSellingPrice(line.sellingPrice);
             }
             if (Boolean.TRUE.equals(order.activation)) product.setActive(true);
+            int qty = receipt.quantity() != null && receipt.quantity() > 0 ? receipt.quantity() : line.quantity;
             purchaseLines.add(new PurchasingService.ReceivePurchaseLineCommand(line.productId, receipt.batchNumber(),
-                    receipt.expiryDate(), line.buyingPrice.doubleValue(), line.quantity));
+                    receipt.expiryDate(), line.buyingPrice.doubleValue(), qty));
         }
         var purchase = purchasing.receivePurchase(new PurchasingService.ReceivePurchaseCommand(order.supplier, order.invoiceNumber, order.branch, purchaseLines), user);
         order.receivedPurchaseId = purchase.getId();
@@ -193,7 +195,7 @@ public class RepurchaseService {
     public record SubmitCommand(String id, String supplier, String invoiceNumber, boolean activation, String branch, List<LineInput> lines) {}
     public record LineInput(long productId, int quantity, BigDecimal buyingPrice, BigDecimal sellingPrice,
                             String batchNumber, String expiryDate, String location) {}
-    public record ReceiptLine(long productId, String batchNumber, String expiryDate) {}
+    public record ReceiptLine(long productId, String batchNumber, String expiryDate, Integer quantity) {}
     public record Order(String id, String supplier, String invoiceNumber, String createdAt, String createdBy, boolean activation, String branch, Long receivedPurchaseId, List<OrderLine> lines) {}
     public record OrderLine(Long productId, String sku, String productName, int quantity, BigDecimal buyingPrice, BigDecimal sellingPrice,
                             String batchNumber, String expiryDate, String location) {}

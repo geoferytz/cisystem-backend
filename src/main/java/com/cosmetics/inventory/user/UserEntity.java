@@ -39,6 +39,12 @@ public class UserEntity {
 	@JoinColumn(name = "branch_id")
 	private com.cosmetics.inventory.branch.BranchEntity branch;
 
+	/** Extra branches this user can VIEW (read-only) besides their home branch. */
+	@ElementCollection(fetch = FetchType.EAGER)
+	@CollectionTable(name = "user_view_branches", joinColumns = @JoinColumn(name = "user_id"))
+	@Column(name = "branch_code")
+	private Set<String> viewBranches = new HashSet<>();
+
 	public Long getId() {
 		return id;
 	}
@@ -97,5 +103,13 @@ public class UserEntity {
 
 	public void setBranch(com.cosmetics.inventory.branch.BranchEntity branch) {
 		this.branch = branch;
+	}
+
+	public Set<String> getViewBranches() {
+		return viewBranches;
+	}
+
+	public void setViewBranches(Set<String> viewBranches) {
+		this.viewBranches = viewBranches == null ? new HashSet<>() : viewBranches;
 	}
 }

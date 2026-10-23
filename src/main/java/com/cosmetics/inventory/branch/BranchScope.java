@@ -39,13 +39,33 @@ public class BranchScope {
 	}
 
 	/**
-	 * Write paths: returns the caller's locked branch when restricted,
-	 * otherwise validates the requested code (blank falls back to the main branch).
+	 * Branch codes the caller may VIEW in read-only mode, besides their locked
+	 * branch. Empty for unrestricted users (they can already see everything).
+	 */
+	@Transactional(readOnly = true)
+	public java.util.Set<String> viewBranchCodes(Authentication authentication) {
+		if (authentication == null || authentication.getPrincipal() == null) {
+			return java.util.Set.of();
+		}
+		UserEntity user = userRepository.findByEmailIgnoreCase(String.valueOf(authentication.getPrincipal())).orElse(null);
+		if (user == null) {
+			return java.util.Set.of();
+		}
+		return user.getViewBranches() == null ? java.util.Set.of() : user.getViewBranches();
+	}
+
+	/**
+	 * Write paths: locked callers always write to their own branch — requesting
+	 * another branch (even a view-only one) is rejected rather than silently
+	 * misfiled under the home branch.
 	 */
 	@Transactional(readOnly = true)
 	public String resolveLocation(Authentication authentication, String requested) {
 		String locked = lockedBranchCode(authentication);
 		if (locked != null) {
+			if (requested != null && !requested.isBlank() && !locked.equalsIgnoreCase(requested.trim())) {
+				throw new IllegalArgumentException("Branch " + requested.trim() + " is view-only for this account");
+			}
 			return locked;
 		}
 		if (requested == null || requested.isBlank()) {
@@ -68,6 +88,12 @@ public class BranchScope {
 	public String scopeFilter(Authentication authentication, String requested) {
 		String locked = lockedBranchCode(authentication);
 		if (locked != null) {
+			if (requested != null && !requested.isBlank()) {
+				String code = requested.trim();
+				if (viewBranchCodes(authentication).stream().anyMatch(v -> v.equalsIgnoreCase(code))) {
+					return branchRepository.findByCodeIgnoreCase(code).map(BranchEntity::getCode).orElse(code);
+				}
+			}
 			return locked;
 		}
 		if (requested == null || requested.isBlank()) {

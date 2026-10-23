@@ -29,14 +29,19 @@ public class SalesGraphqlController {
 	private final BranchScope branchScope;
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository;
+	private final com.cosmetics.inventory.returns.SalesReturnLineRepository salesReturnLineRepository;
 
-	public SalesGraphqlController(SalesService salesService, SalesOrderRepository salesOrderRepository, PermissionGuard permissionGuard, BranchScope branchScope, UserRepository userRepository, PasswordEncoder passwordEncoder) {
+	public SalesGraphqlController(SalesService salesService, SalesOrderRepository salesOrderRepository, PermissionGuard permissionGuard, BranchScope branchScope, UserRepository userRepository, PasswordEncoder passwordEncoder,
+			com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository, com.cosmetics.inventory.returns.SalesReturnLineRepository salesReturnLineRepository) {
 		this.salesService = salesService;
 		this.salesOrderRepository = salesOrderRepository;
 		this.permissionGuard = permissionGuard;
 		this.branchScope = branchScope;
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
+		this.salesReturnRepository = salesReturnRepository;
+		this.salesReturnLineRepository = salesReturnLineRepository;
 	}
 
 	@QueryMapping
@@ -45,10 +50,30 @@ public class SalesGraphqlController {
 	public List<SalesOrderDto> salesOrders(@Argument String branch, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.SALES, PermissionsService.PermissionAction.VIEW);
 		String scoped = branchScope.scopeFilter(authentication, branch);
+
+		// Return info for status badges: qty returned per sale line, value returned per order, orders created by exchange.
+		java.util.Map<Long, Integer> returnedByLine = new java.util.HashMap<>();
+		for (Object[] row : salesReturnLineRepository.sumReturnedQuantityByLine()) {
+			returnedByLine.put((Long) row[0], ((Number) row[1]).intValue());
+		}
+		java.util.Map<Long, java.math.BigDecimal> returnedValueByOrder = new java.util.HashMap<>();
+		java.util.Set<Long> exchangeOrderIds = new java.util.HashSet<>();
+		java.util.Map<Long, com.cosmetics.inventory.returns.SalesReturnEntity> returnByExchangeOrder = new java.util.HashMap<>();
+		for (var r : salesReturnRepository.findAllWithLines()) {
+			returnedValueByOrder.merge(r.getOriginalSalesOrder().getId(), r.getReturnValue(), java.math.BigDecimal::add);
+			if (r.getExchangeSalesOrder() != null) {
+				exchangeOrderIds.add(r.getExchangeSalesOrder().getId());
+				returnByExchangeOrder.put(r.getExchangeSalesOrder().getId(), r);
+			}
+		}
+
 		return salesOrderRepository.findAllByOrderBySoldAtDescIdDesc().stream()
 				.filter(o -> scoped == null || o.getLines().stream()
 						.anyMatch(l -> l.getLocation() != null && l.getLocation().equalsIgnoreCase(scoped)))
-				.map(SalesOrderDto::from).toList();
+				.map(o -> SalesOrderDto.from(o, returnedByLine,
+						returnedValueByOrder.getOrDefault(o.getId(), java.math.BigDecimal.ZERO), exchangeOrderIds.contains(o.getId()),
+						returnByExchangeOrder.get(o.getId())))
+				.toList();
 	}
 
 	@MutationMapping

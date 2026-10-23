@@ -13,7 +13,8 @@ public record AdminUserDto(
 		List<String> roles,
 		Long branchId,
 		String branchCode,
-		String branchName
+		String branchName,
+		List<String> viewBranches
 ) {
 	public static AdminUserDto from(UserEntity user) {
 		var branch = user.getBranch();
@@ -26,7 +27,8 @@ public record AdminUserDto(
 				user.getRoles().stream().map(r -> r.getName().name()).toList(),
 				branch != null ? branch.getId() : null,
 				branch != null ? branch.getCode() : null,
-				branch != null ? branch.getName() : null
+				branch != null ? branch.getName() : null,
+				user.getViewBranches() == null ? List.of() : List.copyOf(user.getViewBranches())
 		);
 	}
 }

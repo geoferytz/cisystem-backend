@@ -29,6 +29,9 @@ type Query {
   customers(query: String): [Customer!]!
   customerPayments(customerId: ID!): [CustomerPayment!]!
   customerDebt(customerId: ID!): Float!
+  salesReturns(branch: String, from: String, to: String): [SalesReturn!]!
+  salesReturn(id: ID!): SalesReturn
+  returnableLines(salesOrderId: ID!): ReturnableSale!
   counterProducts(location: String): [CounterProduct!]!
   pendingCounterCarts: [CounterCart!]!
   counterExpenseCategories: [ExpenseCategory!]!
@@ -74,6 +77,7 @@ type Mutation {
   setProductStatus(input: SetProductStatusInput!): Product!
 
   createBatch(input: CreateBatchInput!): ProductBatch!
+  registerProductsToBranch(input: RegisterProductsToBranchInput!): Int!
   updateBatchNumber(input: UpdateBatchNumberInput!): ProductBatch!
 
   createUser(input: CreateUserInput!): AdminUser!
@@ -94,6 +98,8 @@ type Mutation {
   createCustomer(input: CreateCustomerInput!): Customer!
   updateCustomer(input: UpdateCustomerInput!): Customer!
   recordCustomerPayment(customerId: ID!, amount: Float!, paidAt: String): [CustomerPayment!]!
+  createSalesReturn(input: CreateSalesReturnInput!): SalesReturn!
+  createExchange(input: CreateExchangeInput!): SalesReturn!
   saveCounterCart(input: SaveCounterCartInput!): CounterCart!
   checkoutCounterCart(input: CheckoutCounterCartInput!): SalesOrder!
   cancelCounterCart(input: CounterCartVersionInput!): Boolean!
@@ -285,8 +291,9 @@ input ReceiveRepurchaseOrderInput {
 
 input RepurchaseReceiptLineInput {
   productId: ID!
-  batchNumber: String!
+  batchNumber: String
   expiryDate: String!
+  quantity: Int
 }
 
 type PurchaseOrder {
@@ -388,6 +395,16 @@ type SalesOrder {
   paymentMethod: String
   amountReceived: Float
   lines: [SalesOrderLine!]!
+  returnedValue: Float!
+  exchangeSale: Boolean!
+  exchangeReference: String
+  exchangeLines: [SalesOrderLine!]!
+  returnReference: String
+  exchangeReturnValue: Float
+  exchangeSettlement: Float
+  exchangeRefundAmount: Float
+  exchangeDebtCredit: Float
+  exchangeRefundMethod: String
 }
 
 type Customer {
@@ -417,6 +434,7 @@ type SalesOrderLine {
   location: String!
   unitPrice: Float!
   deductions: [SalesDeduction!]!
+  returnedQuantity: Int!
 }
 
 type SalesDeduction {
@@ -468,6 +486,7 @@ type DailySalesReport {
   totalCostAmount: Float!
   totalProfitAmount: Float!
   totalDiscountAmount: Float!
+  totalReturnsAmount: Float!
   items: [DailySalesReportItem!]!
 }
 
@@ -503,6 +522,7 @@ type User {
   branchId: ID
   branchCode: String
   branchName: String
+  viewBranches: [String!]!
 }
 
 type AdminUser {
@@ -515,6 +535,7 @@ type AdminUser {
   branchId: ID
   branchCode: String
   branchName: String
+  viewBranches: [String!]!
 }
 
 type Category {
@@ -614,6 +635,12 @@ input StockMovementFilter {
 input ProductFilter {
   query: String
   active: Boolean
+  branch: String
+}
+
+input RegisterProductsToBranchInput {
+  branch: String!
+  productIds: [ID!]!
 }
 
 input CategoryFilter {
@@ -722,6 +749,7 @@ input CreateUserInput {
   password: String!
   roles: [String!]!
   branchId: ID
+  viewBranches: [String!]
 }
 
 input UpdateUserInput {
@@ -731,6 +759,7 @@ input UpdateUserInput {
   password: String
   roles: [String!]!
   branchId: ID
+  viewBranches: [String!]
 }
 
 input SetUserActiveInput {
@@ -821,6 +850,101 @@ input CreateSaleLineInput {
   quantity: Int!
   unitPrice: Float!
   location: String
+}
+
+enum ReturnCondition {
+  RESALABLE
+  DAMAGED
+  EXPIRED
+}
+
+type ReturnableSale {
+  salesOrderId: ID!
+  referenceNumber: String
+  customer: String
+  customerId: ID
+  soldAt: String!
+  withinWindow: Boolean!
+  windowDays: Int!
+  customerDebt: Float!
+  lines: [ReturnableLine!]!
+}
+
+type ReturnableLine {
+  lineId: ID!
+  productId: ID!
+  sku: String!
+  productName: String!
+  soldQuantity: Int!
+  returnedQuantity: Int!
+  returnableQuantity: Int!
+  unitPrice: Float!
+  effectiveUnitPrice: Float!
+  location: String
+}
+
+type SalesReturn {
+  id: ID!
+  reference: String!
+  originalSalesOrderId: ID!
+  originalReference: String
+  exchangeSalesOrderId: ID
+  exchangeReference: String
+  customerId: ID
+  customer: String
+  returnedAt: String!
+  returnedBy: String
+  reason: String
+  branch: String!
+  returnValue: Float!
+  lossAmount: Float!
+  refundMethod: String
+  refundAmount: Float!
+  debtCreditAmount: Float!
+  settlementAmount: Float!
+  isExchange: Boolean!
+  lines: [SalesReturnLine!]!
+}
+
+type SalesReturnLine {
+  id: ID!
+  salesOrderLineId: ID!
+  productId: ID!
+  sku: String!
+  productName: String!
+  batchId: ID
+  batchNumber: String
+  quantity: Int!
+  unitPrice: Float!
+  condition: ReturnCondition!
+  lossAmount: Float!
+}
+
+input ReturnLineInput {
+  salesOrderLineId: ID!
+  quantity: Int!
+  condition: ReturnCondition
+}
+
+input CreateSalesReturnInput {
+  salesOrderId: ID!
+  lines: [ReturnLineInput!]!
+  reason: String
+  refundMethod: String
+  debtCreditAmount: Float
+  overrideWindow: Boolean
+}
+
+input CreateExchangeInput {
+  salesOrderId: ID!
+  returnLines: [ReturnLineInput!]!
+  newLines: [CreateSaleLineInput!]!
+  reason: String
+  paymentMethod: String
+  amountReceived: Float
+  refundMethod: String
+  debtCreditAmount: Float
+  overrideWindow: Boolean
 }
 
 input CreateMySaleInput {

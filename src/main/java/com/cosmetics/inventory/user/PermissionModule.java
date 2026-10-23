@@ -8,6 +8,7 @@ public enum PermissionModule {
 	STOCK_MOVEMENTS,
 	EXPIRY_ALERTS,
 	SALES,
+	RETURNS,
 	MY_SALES,
 	CUSTOMERS,
 	PURCHASING,

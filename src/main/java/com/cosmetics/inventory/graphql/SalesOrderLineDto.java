@@ -12,9 +12,14 @@ public record SalesOrderLineDto(
 		int quantity,
 		String location,
 		double unitPrice,
-		List<SalesDeductionDto> deductions
+		List<SalesDeductionDto> deductions,
+		int returnedQuantity
 ) {
 	public static SalesOrderLineDto from(SalesOrderLineEntity line) {
+		return from(line, 0);
+	}
+
+	public static SalesOrderLineDto from(SalesOrderLineEntity line, int returnedQuantity) {
 		var p = line.getProduct();
 		return new SalesOrderLineDto(
 				line.getId(),
@@ -24,7 +29,8 @@ public record SalesOrderLineDto(
 				line.getQuantity(),
 				(line.getLocation() == null || line.getLocation().isBlank()) ? "MAIN" : line.getLocation(),
 				line.getUnitPrice().doubleValue(),
-				line.getDeductions().stream().map(SalesDeductionDto::from).toList()
+				line.getDeductions().stream().map(SalesDeductionDto::from).toList(),
+				returnedQuantity
 		);
 	}
 }

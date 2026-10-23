@@ -71,6 +71,7 @@ public class AdminUserGraphqlController {
 		user.setActive(true);
 		user.setRoles(resolveRoles(input.roles()));
 		user.setBranch(resolveBranch(input.branchId()));
+		user.setViewBranches(resolveViewBranches(input.viewBranches()));
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
@@ -93,6 +94,7 @@ public class AdminUserGraphqlController {
 		}
 		user.setRoles(resolveRoles(input.roles()));
 		user.setBranch(resolveBranch(input.branchId()));
+		user.setViewBranches(resolveViewBranches(input.viewBranches()));
 		return AdminUserDto.from(userRepository.save(user));
 	}
 
@@ -166,10 +168,25 @@ public class AdminUserGraphqlController {
 		return branchRepository.findById(branchId).orElseThrow(() -> new IllegalArgumentException("Branch not found"));
 	}
 
-	public record CreateUserInput(String name, String email, String password, List<String> roles, Long branchId) {
+	private java.util.Set<String> resolveViewBranches(java.util.List<String> codes) {
+		if (codes == null || codes.isEmpty()) {
+			return new java.util.HashSet<>();
+		}
+		java.util.Set<String> resolved = new java.util.HashSet<>();
+		for (String code : codes) {
+			if (code == null || code.isBlank()) continue;
+			String trimmed = code.trim();
+			BranchEntity branch = branchRepository.findByCodeIgnoreCase(trimmed)
+					.orElseThrow(() -> new IllegalArgumentException("Unknown branch: " + trimmed));
+			resolved.add(branch.getCode());
+		}
+		return resolved;
 	}
 
-	public record UpdateUserInput(long userId, String name, String email, String password, List<String> roles, Long branchId) {
+	public record CreateUserInput(String name, String email, String password, List<String> roles, Long branchId, List<String> viewBranches) {
+	}
+
+	public record UpdateUserInput(long userId, String name, String email, String password, List<String> roles, Long branchId, List<String> viewBranches) {
 	}
 
 	public record SetUserActiveInput(long userId, boolean active) {

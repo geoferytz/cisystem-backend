@@ -30,23 +30,41 @@ public class ProductGraphqlController {
 	private final ProductUnitRepository unitRepository;
 	private final PermissionGuard permissionGuard;
 	private final BranchScope branchScope;
+	private final com.cosmetics.inventory.inventory.InventoryRepository inventoryRepository;
+	private final com.cosmetics.inventory.product.ProductBranchRepository productBranchRepository;
 
-	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository, ProductUnitRepository unitRepository, PermissionGuard permissionGuard, BranchScope branchScope) {
+	public ProductGraphqlController(ProductService productService, ProductRepository productRepository, ProductBatchRepository batchRepository, ProductUnitRepository unitRepository, PermissionGuard permissionGuard, BranchScope branchScope,
+			com.cosmetics.inventory.inventory.InventoryRepository inventoryRepository, com.cosmetics.inventory.product.ProductBranchRepository productBranchRepository) {
 		this.productService = productService;
 		this.productRepository = productRepository;
 		this.batchRepository = batchRepository;
 		this.unitRepository = unitRepository;
 		this.permissionGuard = permissionGuard;
 		this.branchScope = branchScope;
+		this.inventoryRepository = inventoryRepository;
+		this.productBranchRepository = productBranchRepository;
 	}
 
 	@QueryMapping
 	@PreAuthorize("isAuthenticated()")
+	@org.springframework.transaction.annotation.Transactional(readOnly = true)
 	public List<ProductEntity> products(@Argument ProductFilter filter, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.VIEW);
 		String query = filter != null ? filter.query() : null;
 		Boolean active = filter != null ? filter.active() : null;
-		return productService.findProducts(query, active);
+		List<ProductEntity> list = productService.findProducts(query, active);
+		// Branch selected: only products that have stock/batches recorded under that branch.
+		String scoped = branchScope.scopeFilter(authentication, filter != null ? filter.branch() : null);
+		if (scoped != null) {
+			java.util.Set<Long> ids = new java.util.HashSet<>(productBranchRepository.findProductIdsByBranch(scoped));
+			for (var item : inventoryRepository.findAll()) {
+				if (item.getLocation() != null && item.getLocation().equalsIgnoreCase(scoped) && item.getBatch() != null) {
+					ids.add(item.getBatch().getProduct().getId());
+				}
+			}
+			list = list.stream().filter(p -> ids.contains(p.getId())).toList();
+		}
+		return list;
 	}
 
 	@QueryMapping
@@ -99,6 +117,38 @@ public class ProductGraphqlController {
 	public ProductEntity setProductStatus(@Argument SetProductStatusInput input, Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.EDIT);
 		return productService.setProductStatus(input.id(), input.active());
+	}
+
+	/**
+	 * Bulk-register existing products to a branch: marks them as belonging to
+	 * that branch so they show up there before any stock arrives.
+	 * Products already present (via inventory or registration) are skipped.
+	 */
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	@org.springframework.transaction.annotation.Transactional
+	public int registerProductsToBranch(@Argument RegisterProductsToBranchInput input, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PRODUCTS, PermissionsService.PermissionAction.CREATE);
+		String branch = branchScope.resolveLocation(authentication, input.branch());
+		int added = 0;
+		java.util.Set<Long> inBranch = new java.util.HashSet<>(productBranchRepository.findProductIdsByBranch(branch));
+		for (var item : inventoryRepository.findAll()) {
+			if (item.getLocation() != null && item.getLocation().equalsIgnoreCase(branch) && item.getBatch() != null) {
+				inBranch.add(item.getBatch().getProduct().getId());
+			}
+		}
+		for (Long pid : input.productIds()) {
+			if (pid == null || inBranch.contains(pid)) continue;
+			var product = productRepository.findById(pid).orElse(null);
+			if (product == null) continue;
+			var pb = new com.cosmetics.inventory.product.ProductBranchEntity();
+			pb.setProduct(product);
+			pb.setBranchCode(branch);
+			productBranchRepository.save(pb);
+			inBranch.add(pid);
+			added++;
+		}
+		return added;
 	}
 
 	@MutationMapping
@@ -179,7 +229,10 @@ public class ProductGraphqlController {
 		return batch.getCostPrice().doubleValue();
 	}
 
-	public record ProductFilter(String query, Boolean active) {
+	public record ProductFilter(String query, Boolean active, String branch) {
+	}
+
+	public record RegisterProductsToBranchInput(String branch, List<Long> productIds) {
 	}
 
 	public record ProductUnitInput(String name, Double price, Double buyingPrice, Integer quantity) {

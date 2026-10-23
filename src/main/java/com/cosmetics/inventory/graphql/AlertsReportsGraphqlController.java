@@ -31,18 +31,41 @@ public class AlertsReportsGraphqlController {
 	private final PermissionGuard permissionGuard;
 	private final com.cosmetics.inventory.branch.BranchScope branchScope;
 
+	private final com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository;
+
 	public AlertsReportsGraphqlController(
 			InventoryRepository inventoryRepository,
 			StockMovementRepository stockMovementRepository,
 			SalesOrderRepository salesOrderRepository,
 			PermissionGuard permissionGuard,
-			com.cosmetics.inventory.branch.BranchScope branchScope
+			com.cosmetics.inventory.branch.BranchScope branchScope,
+			com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository
 	) {
 		this.inventoryRepository = inventoryRepository;
 		this.stockMovementRepository = stockMovementRepository;
 		this.salesOrderRepository = salesOrderRepository;
 		this.permissionGuard = permissionGuard;
 		this.branchScope = branchScope;
+		this.salesReturnRepository = salesReturnRepository;
+	}
+
+	/**
+	 * Returns reduce the day's figures on the day the goods came back: refund value leaves sales,
+	 * and resalable goods put their cost back (damaged/expired cost stays — it is already an expense).
+	 * [0] = returned sales value, [1] = cost restored.
+	 */
+	private double[] returnsImpact(Instant from, Instant to, String scoped) {
+		double[] acc = new double[2];
+		for (var r : salesReturnRepository.findWithLinesBetween(from, to)) {
+			if (scoped != null && !r.getBranch().equalsIgnoreCase(scoped)) continue;
+			acc[0] += r.getReturnValue().doubleValue();
+			for (var l : r.getLines()) {
+				if (l.getCondition() == com.cosmetics.inventory.returns.ReturnCondition.RESALABLE && l.getBatch() != null && l.getBatch().getCostPrice() != null) {
+					acc[1] += l.getBatch().getCostPrice().multiply(BigDecimal.valueOf(l.getQuantity())).doubleValue();
+				}
+			}
+		}
+		return acc;
 	}
 
 	@QueryMapping
@@ -161,13 +184,16 @@ public class AlertsReportsGraphqlController {
 			}
 		}
 
-		double totalProfit = totalSales.subtract(totalCost).doubleValue();
+		double[] ret = returnsImpact(from, to, scoped);
+		double netSalesTotal = totalSales.doubleValue() - ret[0];
+		double netCostTotal = totalCost.doubleValue() - ret[1];
 		return new DailySalesReportDto(
 				day.toString(),
-				totalSales.doubleValue(),
-				totalCost.doubleValue(),
-				totalProfit,
+				netSalesTotal,
+				netCostTotal,
+				netSalesTotal - netCostTotal,
 				totalDiscount.doubleValue(),
+				ret[0],
 				itemsByProduct.values().stream()
 						.sorted(Comparator.comparing(DailySalesReportItemDto::salesAmount).reversed())
 						.toList()
@@ -210,7 +236,7 @@ public class AlertsReportsGraphqlController {
 				orderDiscount = orderSubtotal;
 			}
 
-			double[] acc = totals.computeIfAbsent(day, k -> new double[3]);
+			double[] acc = totals.computeIfAbsent(day, k -> new double[4]);
 			for (var line : so.getLines()) {
 				if (scoped != null && (line.getLocation() == null || !line.getLocation().equalsIgnoreCase(scoped))) {
 					continue;
@@ -228,6 +254,19 @@ public class AlertsReportsGraphqlController {
 			acc[2] += orderDiscount.doubleValue();
 		}
 
+		for (var r : salesReturnRepository.findWithLinesBetween(fromI, toI)) {
+			if (scoped != null && !r.getBranch().equalsIgnoreCase(scoped)) continue;
+			LocalDate day = r.getReturnedAt().atZone(ZoneOffset.UTC).toLocalDate();
+			double[] acc = totals.computeIfAbsent(day, k -> new double[4]);
+			acc[0] -= r.getReturnValue().doubleValue();
+			acc[3] += r.getReturnValue().doubleValue();
+			for (var l : r.getLines()) {
+				if (l.getCondition() == com.cosmetics.inventory.returns.ReturnCondition.RESALABLE && l.getBatch() != null && l.getBatch().getCostPrice() != null) {
+					acc[1] -= l.getBatch().getCostPrice().multiply(BigDecimal.valueOf(l.getQuantity())).doubleValue();
+				}
+			}
+		}
+
 		return totals.entrySet().stream()
 				.map(e -> new DailySalesReportDto(
 						e.getKey().toString(),
@@ -235,6 +274,7 @@ public class AlertsReportsGraphqlController {
 						e.getValue()[1],
 						e.getValue()[0] - e.getValue()[1],
 						e.getValue()[2],
+						e.getValue()[3],
 						List.of()
 				))
 				.toList();
@@ -380,6 +420,7 @@ public class AlertsReportsGraphqlController {
 			double totalCostAmount,
 			double totalProfitAmount,
 			double totalDiscountAmount,
+			double totalReturnsAmount,
 			List<DailySalesReportItemDto> items
 	) {
 	}
