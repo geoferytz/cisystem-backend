@@ -1,5 +1,6 @@
 package com.cosmetics.inventory.graphql;
 
+import com.cosmetics.inventory.user.RoleEntity;
 import com.cosmetics.inventory.user.UserEntity;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public record AdminUserDto(
 				user.getEmail(),
 				user.getPlainPassword(),
 				user.isActive(),
-				user.getRoles().stream().map(r -> r.getName().name()).toList(),
+				user.getRoles().stream().map(RoleEntity::getName).sorted().toList(),
 				branch != null ? branch.getId() : null,
 				branch != null ? branch.getCode() : null,
 				branch != null ? branch.getName() : null,

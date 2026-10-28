@@ -3,7 +3,7 @@ package com.cosmetics.inventory.graphql;
 import com.cosmetics.inventory.branch.BranchEntity;
 import com.cosmetics.inventory.branch.BranchRepository;
 import com.cosmetics.inventory.user.RoleEntity;
-import com.cosmetics.inventory.user.RoleName;
+import com.cosmetics.inventory.user.RolePermissionRepository;
 import com.cosmetics.inventory.user.RoleRepository;
 import com.cosmetics.inventory.user.UserEntity;
 import com.cosmetics.inventory.user.UserRepository;
@@ -27,13 +27,15 @@ import java.util.Set;
 public class AdminUserGraphqlController {
 	private final UserRepository userRepository;
 	private final RoleRepository roleRepository;
+	private final RolePermissionRepository rolePermissionRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final PermissionGuard permissionGuard;
 	private final BranchRepository branchRepository;
 
-	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, PermissionGuard permissionGuard, BranchRepository branchRepository) {
+	public AdminUserGraphqlController(UserRepository userRepository, RoleRepository roleRepository, RolePermissionRepository rolePermissionRepository, PasswordEncoder passwordEncoder, PermissionGuard permissionGuard, BranchRepository branchRepository) {
 		this.userRepository = userRepository;
 		this.roleRepository = roleRepository;
+		this.rolePermissionRepository = rolePermissionRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.permissionGuard = permissionGuard;
 		this.branchRepository = branchRepository;
@@ -52,7 +54,92 @@ public class AdminUserGraphqlController {
 	@Transactional(readOnly = true)
 	public List<String> roles(Authentication authentication) {
 		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
-		return List.of(RoleName.values()).stream().map(Enum::name).toList();
+		return roleRepository.findAll().stream().map(RoleEntity::getName).sorted().toList();
+	}
+
+	@QueryMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional(readOnly = true)
+	public List<RoleInfoDto> roleList(Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
+		return roleRepository.findAll().stream()
+				.sorted(java.util.Comparator.comparing(RoleEntity::getName))
+				.map(r -> new RoleInfoDto(
+						r.getId(),
+						r.getName(),
+						r.getDescription(),
+						userRepository.countByRoles_Name(r.getName()),
+						rolePermissionRepository.findByRoleIdOrderByModuleAsc(r.getId()).stream().filter(com.cosmetics.inventory.user.RolePermissionEntity::isCanView).count()
+				))
+				.toList();
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	public RoleInfoDto createRole(Authentication authentication, @Argument CreateRoleInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.CREATE);
+		String name = normalizeRoleName(input.name());
+		roleRepository.findByNameIgnoreCase(name).ifPresent(r -> {
+			throw new IllegalArgumentException("Role already exists");
+		});
+		RoleEntity role = new RoleEntity();
+		role.setName(name);
+		role.setDescription(input.description() == null || input.description().isBlank() ? null : input.description().trim());
+		RoleEntity saved = roleRepository.save(role);
+		return new RoleInfoDto(saved.getId(), saved.getName(), saved.getDescription(), 0, 0);
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	public RoleInfoDto updateRole(Authentication authentication, @Argument UpdateRoleInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
+		RoleEntity role = roleRepository.findById(input.roleId()).orElseThrow(() -> new IllegalArgumentException("Role not found"));
+		if (input.name() != null && !input.name().isBlank()) {
+			String name = normalizeRoleName(input.name());
+			if (!name.equalsIgnoreCase(role.getName())) {
+				if ("ADMIN".equalsIgnoreCase(role.getName())) {
+					throw new IllegalArgumentException("The ADMIN role cannot be renamed");
+				}
+				roleRepository.findByNameIgnoreCase(name).ifPresent(r -> {
+					throw new IllegalArgumentException("Role already exists");
+				});
+				role.setName(name);
+			}
+		}
+		if (input.description() != null) {
+			role.setDescription(input.description().isBlank() ? null : input.description().trim());
+		}
+		RoleEntity saved = roleRepository.save(role);
+		return new RoleInfoDto(saved.getId(), saved.getName(), saved.getDescription(), userRepository.countByRoles_Name(saved.getName()),
+				rolePermissionRepository.findByRoleIdOrderByModuleAsc(saved.getId()).stream().filter(com.cosmetics.inventory.user.RolePermissionEntity::isCanView).count());
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional
+	public boolean deleteRole(Authentication authentication, @Argument long roleId) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.DELETE);
+		RoleEntity role = roleRepository.findById(roleId).orElseThrow(() -> new IllegalArgumentException("Role not found"));
+		if ("ADMIN".equalsIgnoreCase(role.getName())) {
+			throw new IllegalArgumentException("The ADMIN role cannot be deleted");
+		}
+		if (userRepository.countByRoles_Name(role.getName()) > 0) {
+			throw new IllegalArgumentException("Role is still assigned to users — reassign them first");
+		}
+		rolePermissionRepository.findByRoleIdOrderByModuleAsc(roleId).forEach(rolePermissionRepository::delete);
+		roleRepository.delete(role);
+		return true;
+	}
+
+	private static String normalizeRoleName(String name) {
+		if (name == null || name.isBlank()) {
+			throw new IllegalArgumentException("Role name is required");
+		}
+		String normalized = name.trim().toUpperCase().replaceAll("[^A-Z0-9_]", "_");
+		if (normalized.isBlank()) {
+			throw new IllegalArgumentException("Role name is required");
+		}
+		return normalized;
 	}
 
 	@MutationMapping
@@ -156,8 +243,8 @@ public class AdminUserGraphqlController {
 		return roles.stream()
 				.map(String::trim)
 				.filter(s -> !s.isBlank())
-				.map(s -> RoleName.valueOf(s.toUpperCase()))
-				.map(roleName -> roleRepository.findByName(roleName).orElseThrow())
+				.map(s -> roleRepository.findByNameIgnoreCase(s)
+						.orElseThrow(() -> new IllegalArgumentException("Unknown role: " + s)))
 				.collect(java.util.stream.Collectors.toSet());
 	}
 
@@ -196,5 +283,14 @@ public class AdminUserGraphqlController {
 	}
 
 	public record ResetUserPasswordInput(long userId, String newPassword) {
+	}
+
+	public record CreateRoleInput(String name, String description) {
+	}
+
+	public record UpdateRoleInput(long roleId, String name, String description) {
+	}
+
+	public record RoleInfoDto(long id, String name, String description, long userCount, long moduleCount) {
 	}
 }

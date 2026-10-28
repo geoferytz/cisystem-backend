@@ -1,5 +1,6 @@
 package com.cosmetics.inventory.graphql;
 
+import com.cosmetics.inventory.user.PermissionCatalog;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionsService;
@@ -40,7 +41,37 @@ public class PermissionsGraphqlController {
 	@Transactional(readOnly = true)
 	public List<UserPermissionDto> myPermissions(Authentication authentication) {
 		UserEntity u = resolveCurrentUser(authentication);
-		return permissionsService.getPermissionsForUser(u.getId()).stream().map(UserPermissionDto::from).toList();
+		return permissionsService.getEffectivePermissions(u.getId()).stream().map(UserPermissionDto::from).toList();
+	}
+
+	@QueryMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional(readOnly = true)
+	public List<UserPermissionDto> rolePermissions(Authentication authentication, @Argument long roleId) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.VIEW);
+		return permissionsService.getPermissionsForRole(roleId).stream().map(UserPermissionDto::from).toList();
+	}
+
+	@MutationMapping
+	@PreAuthorize("isAuthenticated()")
+	@Transactional
+	public List<UserPermissionDto> setRolePermissions(Authentication authentication, @Argument SetRolePermissionsInput input) {
+		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
+		List<PermissionsService.UpsertPermission> perms = toUpserts(input.permissions());
+		return permissionsService.setPermissionsForRole(input.roleId(), perms).stream().map(UserPermissionDto::from).toList();
+	}
+
+	private static List<PermissionsService.UpsertPermission> toUpserts(List<PermissionInput> permissions) {
+		if (permissions == null) return List.of();
+		return permissions.stream()
+				.map(p -> new PermissionsService.UpsertPermission(
+						PermissionModule.valueOf(p.module().trim().toUpperCase()),
+						p.canView(),
+						p.canCreate(),
+						p.canEdit(),
+						p.canDelete(),
+						p.extras()
+				)).toList();
 	}
 
 	@MutationMapping
@@ -48,14 +79,7 @@ public class PermissionsGraphqlController {
 	@Transactional
 	public List<UserPermissionDto> setUserPermissions(Authentication authentication, @Argument SetUserPermissionsInput input) {
 		permissionGuard.require(authentication, PermissionModule.USERS_ROLES, PermissionsService.PermissionAction.EDIT);
-		List<PermissionsService.UpsertPermission> perms = input.permissions() == null ? List.of() : input.permissions().stream()
-				.map(p -> new PermissionsService.UpsertPermission(
-						PermissionModule.valueOf(p.module().trim().toUpperCase()),
-						p.canView(),
-						p.canCreate(),
-						p.canEdit(),
-						p.canDelete()
-				)).toList();
+		List<PermissionsService.UpsertPermission> perms = toUpserts(input.permissions());
 		return permissionsService.setPermissionsForUser(input.userId(), perms).stream().map(UserPermissionDto::from).toList();
 	}
 
@@ -67,9 +91,27 @@ public class PermissionsGraphqlController {
 		return userRepository.findByEmailIgnoreCase(email).orElseThrow();
 	}
 
-	public record PermissionInput(String module, Boolean canView, Boolean canCreate, Boolean canEdit, Boolean canDelete) {
+	@QueryMapping
+	@PreAuthorize("isAuthenticated()")
+	public List<PermissionModuleCatalogDto> permissionCatalog() {
+		return java.util.Arrays.stream(PermissionModule.values())
+				.map(m -> new PermissionModuleCatalogDto(m.name(), PermissionCatalog.extras(m).stream()
+						.map(a -> new PermissionActionDto(a.code(), a.label(), a.description())).toList()))
+				.toList();
+	}
+
+	public record PermissionActionDto(String code, String label, String description) {
+	}
+
+	public record PermissionModuleCatalogDto(String module, List<PermissionActionDto> actions) {
+	}
+
+	public record PermissionInput(String module, Boolean canView, Boolean canCreate, Boolean canEdit, Boolean canDelete, List<String> extras) {
 	}
 
 	public record SetUserPermissionsInput(long userId, List<PermissionInput> permissions) {
+	}
+
+	public record SetRolePermissionsInput(long roleId, List<PermissionInput> permissions) {
 	}
 }

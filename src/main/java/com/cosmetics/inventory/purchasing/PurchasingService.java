@@ -27,6 +27,7 @@ public class PurchasingService {
 	private final StockMovementRepository stockMovementRepository;
 	private final SalesDeductionRepository salesDeductionRepository;
 	private final com.cosmetics.inventory.branch.BranchScope branchScope;
+	private final com.cosmetics.inventory.product.ProductService productService;
 
 	public PurchasingService(
 			PurchaseOrderRepository purchaseOrderRepository,
@@ -35,7 +36,8 @@ public class PurchasingService {
 			InventoryRepository inventoryRepository,
 			StockMovementRepository stockMovementRepository,
 			SalesDeductionRepository salesDeductionRepository,
-			com.cosmetics.inventory.branch.BranchScope branchScope
+			com.cosmetics.inventory.branch.BranchScope branchScope,
+			com.cosmetics.inventory.product.ProductService productService
 	) {
 		this.purchaseOrderRepository = purchaseOrderRepository;
 		this.productRepository = productRepository;
@@ -44,6 +46,7 @@ public class PurchasingService {
 		this.stockMovementRepository = stockMovementRepository;
 		this.salesDeductionRepository = salesDeductionRepository;
 		this.branchScope = branchScope;
+		this.productService = productService;
 	}
 
 	@Transactional
@@ -59,11 +62,11 @@ public class PurchasingService {
 		po.setReceivedBy(authentication != null ? String.valueOf(authentication.getPrincipal()) : null);
 
 		for (ReceivePurchaseLineCommand line : cmd.lines()) {
-			ProductEntity product = productRepository.findById(line.productId()).orElseThrow();
+			ProductEntity product = resolveProduct(line);
 
 			ProductBatchEntity batch = new ProductBatchEntity();
 			batch.setProduct(product);
-			batch.setBatchNumber(resolveBatchNumber(line));
+			batch.setBatchNumber(resolveBatchNumber(line, product.getId()));
 			batch.setExpiryDate(LocalDate.parse(line.expiryDate()));
 			batch.setCostPrice(BigDecimal.valueOf(line.costPrice()));
 			batch.setQuantityReceived(line.quantityReceived());
@@ -157,15 +160,28 @@ public class PurchasingService {
 		}
 	}
 
-	private String resolveBatchNumber(ReceivePurchaseLineCommand line) {
+	private ProductEntity resolveProduct(ReceivePurchaseLineCommand line) {
+		if (line.newProduct() != null) {
+			if (line.newProduct().name() == null || line.newProduct().name().isBlank()) {
+				throw new IllegalArgumentException("New product name is required");
+			}
+			return productService.createProduct(line.newProduct());
+		}
+		if (line.productId() == null) {
+			throw new IllegalArgumentException("productId or newProduct is required");
+		}
+		return productRepository.findById(line.productId()).orElseThrow();
+	}
+
+	private String resolveBatchNumber(ReceivePurchaseLineCommand line, long productId) {
 		if (line.batchNumber() != null && !line.batchNumber().isBlank()) {
 			return line.batchNumber().trim();
 		}
-		long next = batchRepository.findByProductIdOrderByExpiryDateAscCreatedAtAsc(line.productId()).size() + 1;
+		long next = batchRepository.findByProductIdOrderByExpiryDateAscCreatedAtAsc(productId).size() + 1;
 		String candidate;
 		do {
-			candidate = String.format("B%d-%04d", line.productId(), next++);
-		} while (batchRepository.findByProductIdAndBatchNumberIgnoreCase(line.productId(), candidate).isPresent());
+			candidate = String.format("B%d-%04d", productId, next++);
+		} while (batchRepository.findByProductIdAndBatchNumberIgnoreCase(productId, candidate).isPresent());
 		return candidate;
 	}
 
@@ -174,11 +190,11 @@ public class PurchasingService {
 			throw new IllegalArgumentException("At least one line is required");
 		}
 		for (ReceivePurchaseLineCommand line : lines) {
-			ProductEntity product = productRepository.findById(line.productId()).orElseThrow();
+			ProductEntity product = resolveProduct(line);
 
 			ProductBatchEntity batch = new ProductBatchEntity();
 			batch.setProduct(product);
-			batch.setBatchNumber(resolveBatchNumber(line));
+			batch.setBatchNumber(resolveBatchNumber(line, product.getId()));
 			batch.setExpiryDate(LocalDate.parse(line.expiryDate()));
 			batch.setCostPrice(BigDecimal.valueOf(line.costPrice()));
 			batch.setQuantityReceived(line.quantityReceived());
@@ -218,7 +234,7 @@ public class PurchasingService {
 	public record UpdatePurchaseCommand(long id, String supplier, String invoiceNumber, String branch, List<ReceivePurchaseLineCommand> lines) {
 	}
 
-	public record ReceivePurchaseLineCommand(long productId, String batchNumber, String expiryDate, double costPrice,
-									 int quantityReceived) {
+	public record ReceivePurchaseLineCommand(Long productId, String batchNumber, String expiryDate, double costPrice,
+									 int quantityReceived, com.cosmetics.inventory.product.ProductService.CreateProductCommand newProduct) {
 	}
 }

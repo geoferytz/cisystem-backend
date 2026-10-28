@@ -18,14 +18,18 @@ public class UserPermissionsSchemaPatch implements ApplicationRunner {
 
 	@Override
 	public void run(ApplicationArguments args) throws Exception {
-		String sqlDrop = "ALTER TABLE user_permissions DROP CONSTRAINT IF EXISTS user_permissions_module_check";
-		String sqlAdd = "ALTER TABLE user_permissions ADD CONSTRAINT user_permissions_module_check CHECK (module IN (" +
-				"'PRODUCTS','CATEGORIES','INVENTORY','STOCK_MOVEMENTS','SALES','MY_SALES','PURCHASING','EXPENSES','EXPENSE_CATEGORIES','REPORTS','PROFIT_MANAGEMENT','USERS_ROLES','BRANCHES','TRANSFERS'" +
-				"))";
+		// Built from the enum so new modules are always accepted.
+		String allowed = java.util.Arrays.stream(PermissionModule.values())
+				.map(m -> "'" + m.name() + "'")
+				.collect(java.util.stream.Collectors.joining(","));
 
 		try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-			s.execute(sqlDrop);
-			s.execute(sqlAdd);
+			// role names are free-form now (dynamic roles) — drop the old enum check.
+			s.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_name_check");
+			for (String table : new String[]{"user_permissions", "role_permissions"}) {
+				s.execute("ALTER TABLE " + table + " DROP CONSTRAINT IF EXISTS " + table + "_module_check");
+				s.execute("ALTER TABLE " + table + " ADD CONSTRAINT " + table + "_module_check CHECK (module IN (" + allowed + "))");
+			}
 		}
 	}
 }

@@ -21,6 +21,9 @@ type Query {
 
   userPermissions(userId: ID!): [UserPermission!]!
   myPermissions: [UserPermission!]!
+  permissionCatalog: [PermissionModuleCatalog!]!
+  roleList: [RoleInfo!]!
+  rolePermissions(roleId: ID!): [UserPermission!]!
 
   purchaseOrders(branch: String): [PurchaseOrder!]!
   repurchaseProducts(branch: String): [RepurchaseProduct!]!
@@ -88,6 +91,10 @@ type Mutation {
   resetUserPassword(input: ResetUserPasswordInput!): AdminUser!
 
   setUserPermissions(input: SetUserPermissionsInput!): [UserPermission!]!
+  setRolePermissions(input: SetRolePermissionsInput!): [UserPermission!]!
+  createRole(input: CreateRoleInput!): RoleInfo!
+  updateRole(input: UpdateRoleInput!): RoleInfo!
+  deleteRole(roleId: ID!): Boolean!
 
   receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
   submitRepurchase(input: SubmitRepurchaseInput!): RepurchaseOrder!
@@ -205,6 +212,18 @@ type UserPermission {
   canCreate: Boolean!
   canEdit: Boolean!
   canDelete: Boolean!
+  extras: [String!]!
+}
+
+type PermissionAction {
+  code: String!
+  label: String!
+  description: String
+}
+
+type PermissionModuleCatalog {
+  module: String!
+  actions: [PermissionAction!]!
 }
 
 input PermissionInput {
@@ -213,11 +232,36 @@ input PermissionInput {
   canCreate: Boolean!
   canEdit: Boolean!
   canDelete: Boolean!
+  extras: [String!]
 }
 
 input SetUserPermissionsInput {
   userId: ID!
   permissions: [PermissionInput!]!
+}
+
+input SetRolePermissionsInput {
+  roleId: ID!
+  permissions: [PermissionInput!]!
+}
+
+input CreateRoleInput {
+  name: String!
+  description: String
+}
+
+input UpdateRoleInput {
+  roleId: ID!
+  name: String
+  description: String
+}
+
+type RoleInfo {
+  id: ID!
+  name: String!
+  description: String
+  userCount: Int!
+  moduleCount: Int!
 }
 
 type MySaleLine {
@@ -797,11 +841,32 @@ input DeletePurchaseInput {
 }
 
 input ReceivePurchaseLineInput {
-  productId: ID!
-  batchNumber: String!
+  productId: ID
+  batchNumber: String
   expiryDate: String!
   costPrice: Float!
   quantityReceived: Int!
+  newProduct: NewPurchaseProductInput
+}
+
+input NewPurchaseProductInput {
+  sku: String
+  barcode: String
+  name: String!
+  brand: String
+  category: String
+  variant: String
+  unitOfMeasure: String
+  buyingPrice: Float
+  sellingPrice: Float
+  units: [NewPurchaseProductUnitInput!]
+}
+
+input NewPurchaseProductUnitInput {
+  name: String!
+  price: Float
+  buyingPrice: Float
+  quantity: Int
 }
 
 input CreateSaleInput {

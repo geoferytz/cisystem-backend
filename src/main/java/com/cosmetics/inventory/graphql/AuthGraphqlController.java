@@ -47,7 +47,7 @@ public class AuthGraphqlController {
 			throw new IllegalArgumentException("Invalid credentials");
 		}
 
-		List<String> roles = user.getRoles().stream().map(r -> r.getName().name()).toList();
+		List<String> roles = user.getRoles().stream().map(com.cosmetics.inventory.user.RoleEntity::getName).toList();
 		String token = jwtService.createAccessToken(user.getEmail(), roles);
 		return new AuthPayload(token);
 	}
@@ -60,7 +60,7 @@ public class AuthGraphqlController {
 		if (!user.isActive()) {
 			throw new IllegalArgumentException("User is inactive");
 		}
-		List<String> roles = user.getRoles().stream().map(r -> r.getName().name()).toList();
+		List<String> roles = user.getRoles().stream().map(com.cosmetics.inventory.user.RoleEntity::getName).toList();
 		return new AuthPayload(jwtService.createAccessToken(user.getEmail(), roles));
 	}
 

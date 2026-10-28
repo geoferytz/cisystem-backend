@@ -10,7 +10,6 @@ import com.cosmetics.inventory.sales.SalesService;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionsService;
-import com.cosmetics.inventory.user.RoleName;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
@@ -83,7 +82,7 @@ public class ReturnsGraphqlController {
 	@Transactional
 	public SalesReturnDto createSalesReturn(@Argument CreateSalesReturnInput input, Authentication authentication) {
 		permissionGuard.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.RETURNS, PermissionModule.SALES, PermissionModule.COUNTER);
-		boolean override = Boolean.TRUE.equals(input.overrideWindow()) && isAdmin(authentication);
+		boolean override = Boolean.TRUE.equals(input.overrideWindow()) && canOverride(authentication);
 		var ret = returnsService.createReturn(new ReturnsService.CreateReturnCommand(
 				input.salesOrderId(), toLines(input.lines()), input.reason(), input.refundMethod(), dec(input.debtCreditAmount())), authentication, override);
 		return SalesReturnDto.from(returnRepository.findWithLinesById(ret.getId()).orElse(ret));
@@ -94,7 +93,8 @@ public class ReturnsGraphqlController {
 	@Transactional
 	public SalesReturnDto createExchange(@Argument CreateExchangeInput input, Authentication authentication) {
 		permissionGuard.requireAny(authentication, PermissionsService.PermissionAction.CREATE, PermissionModule.RETURNS, PermissionModule.SALES, PermissionModule.COUNTER);
-		boolean override = Boolean.TRUE.equals(input.overrideWindow()) && isAdmin(authentication);
+		permissionGuard.rejectIfDenied(authentication, PermissionModule.RETURNS, "EXCHANGE");
+		boolean override = Boolean.TRUE.equals(input.overrideWindow()) && canOverride(authentication);
 		List<SalesService.CreateSaleLineCommand> newLines = input.newLines() == null ? List.of() : input.newLines().stream()
 				.map(l -> new SalesService.CreateSaleLineCommand(l.productId(), l.quantity(), l.unitPrice(), branchScope.resolveLocation(authentication, l.location())))
 				.toList();
@@ -118,9 +118,20 @@ public class ReturnsGraphqlController {
 		return LocalDate.parse(isoDate).atStartOfDay(ZoneOffset.UTC).toInstant();
 	}
 
+	/** Admins, or users granted RETURNS → LATE_RETURN, may accept returns past the window. */
+	private boolean canOverride(Authentication authentication) {
+		if (isAdmin(authentication)) return true;
+		try {
+			permissionGuard.requireExtra(authentication, PermissionModule.RETURNS, "LATE_RETURN");
+			return true;
+		} catch (org.springframework.security.access.AccessDeniedException e) {
+			return false;
+		}
+	}
+
 	private static boolean isAdmin(Authentication authentication) {
 		return authentication != null && authentication.getAuthorities().stream()
-				.anyMatch(a -> ("ROLE_" + RoleName.ADMIN.name()).equals(a.getAuthority()));
+				.anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
 	}
 
 	public record ReturnableSale(Long salesOrderId, String referenceNumber, String customer, Long customerId, String soldAt,

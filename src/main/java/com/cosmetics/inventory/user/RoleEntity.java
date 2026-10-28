@@ -9,19 +9,30 @@ public class RoleEntity {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Enumerated(EnumType.STRING)
+	/** Uppercase unique name, e.g. ADMIN, STOREKEEPER, SUPERVISOR. */
 	@Column(nullable = false, unique = true, length = 50)
-	private RoleName name;
+	private String name;
+
+	@Column(length = 255)
+	private String description;
 
 	public Long getId() {
 		return id;
 	}
 
-	public RoleName getName() {
+	public String getName() {
 		return name;
 	}
 
-	public void setName(RoleName name) {
+	public void setName(String name) {
 		this.name = name;
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+	public void setDescription(String description) {
+		this.description = description;
 	}
 }

@@ -60,7 +60,8 @@ public class PurchasingGraphqlController {
 								l.batchNumber(),
 								l.expiryDate(),
 								l.costPrice(),
-								l.quantityReceived()
+								l.quantityReceived(),
+								toNewProductCommand(l.newProduct())
 						)).toList()
 				),
 			authentication
@@ -83,7 +84,8 @@ public class PurchasingGraphqlController {
 								l.batchNumber(),
 								l.expiryDate(),
 								l.costPrice(),
-								l.quantityReceived()
+								l.quantityReceived(),
+								toNewProductCommand(l.newProduct())
 						)).toList()
 				),
 			authentication
@@ -126,13 +128,43 @@ public class PurchasingGraphqlController {
 		return repurchase.receive(input.id(), input.lines(), authentication);
 	}
 
+	private static com.cosmetics.inventory.product.ProductService.CreateProductCommand toNewProductCommand(
+			NewPurchaseProductInput input) {
+		if (input == null) {
+			return null;
+		}
+		return new com.cosmetics.inventory.product.ProductService.CreateProductCommand(
+				input.sku(),
+				input.barcode(),
+				input.name(),
+				input.brand(),
+				input.category(),
+				input.variant(),
+				input.unitOfMeasure(),
+				input.buyingPrice(),
+				input.sellingPrice(),
+				true,
+				input.units() == null ? null : input.units().stream().map(u ->
+						new com.cosmetics.inventory.product.ProductService.UnitInput(
+								u.name(), u.price(), u.buyingPrice(), u.quantity())).toList()
+		);
+	}
+
 	public record ReceiveRepurchaseInput(String id, List<RepurchaseService.ReceiptLine> lines) {}
 
 	public record ReceivePurchaseInput(String supplier, String invoiceNumber, String branch, List<ReceivePurchaseLineInput> lines) {
 	}
 
-	public record ReceivePurchaseLineInput(long productId, String batchNumber, String expiryDate, double costPrice,
-													 int quantityReceived) {
+	public record ReceivePurchaseLineInput(Long productId, String batchNumber, String expiryDate, double costPrice,
+													 int quantityReceived, NewPurchaseProductInput newProduct) {
+	}
+
+	public record NewPurchaseProductInput(String sku, String barcode, String name, String brand, String category,
+										  String variant, String unitOfMeasure, Double buyingPrice,
+										  Double sellingPrice, List<NewPurchaseProductUnitInput> units) {
+	}
+
+	public record NewPurchaseProductUnitInput(String name, Double price, Double buyingPrice, Integer quantity) {
 	}
 
 	public record UpdatePurchaseInput(long id, String supplier, String invoiceNumber, String branch, List<ReceivePurchaseLineInput> lines) {

@@ -34,6 +34,21 @@ public class UserPermissionEntity {
 	@Column(nullable = false)
 	private boolean canDelete;
 
+	/**
+	 * Comma-separated fine-grained action codes (see PermissionCatalog).
+	 * NULL = never configured (legacy row) and treated as "all extras granted".
+	 */
+	@Column(name = "extra_actions", length = 1000)
+	private String extraActions;
+
+	public String getExtraActions() {
+		return extraActions;
+	}
+
+	public void setExtraActions(String extraActions) {
+		this.extraActions = extraActions;
+	}
+
 	public Long getId() {
 		return id;
 	}

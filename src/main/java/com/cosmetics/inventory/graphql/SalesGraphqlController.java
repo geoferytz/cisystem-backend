@@ -14,7 +14,6 @@ import com.cosmetics.inventory.branch.BranchScope;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionsService;
-import com.cosmetics.inventory.user.RoleName;
 import com.cosmetics.inventory.user.UserRepository;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -157,7 +156,7 @@ public class SalesGraphqlController {
 		}
 		String code = adminCode.trim();
 		boolean approved = userRepository.findAll().stream()
-				.filter(u -> u.isActive() && u.getRoles().stream().anyMatch(r -> r.getName() == RoleName.ADMIN))
+				.filter(u -> u.isActive() && u.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName())))
 				.anyMatch(u -> passwordEncoder.matches(code, u.getPasswordHash()));
 		if (!approved) {
 			throw new IllegalArgumentException("Invalid admin approval code");

@@ -50,6 +50,33 @@ public class PermissionGuard {
 		throw new AccessDeniedException("Forbidden");
 	}
 
+	/** Requires a fine-grained action (see PermissionCatalog). Admins always pass. */
+	@Transactional(readOnly = true)
+	public void requireExtra(Authentication authentication, PermissionModule module, String code) {
+		if (authentication == null || authentication.getPrincipal() == null) {
+			throw new AccessDeniedException("Not authenticated");
+		}
+		if (hasRole(authentication, "ROLE_ADMIN")) {
+			return;
+		}
+		UserEntity user = userRepository.findByEmailIgnoreCase(String.valueOf(authentication.getPrincipal())).orElseThrow();
+		if (!permissionsService.hasExtra(user.getId(), module, code)) {
+			throw new AccessDeniedException("Forbidden");
+		}
+	}
+
+	/** Soft gate: blocks only when the module was configured and this action was explicitly left off. */
+	@Transactional(readOnly = true)
+	public void rejectIfDenied(Authentication authentication, PermissionModule module, String code) {
+		if (authentication == null || authentication.getPrincipal() == null || hasRole(authentication, "ROLE_ADMIN")) {
+			return;
+		}
+		UserEntity user = userRepository.findByEmailIgnoreCase(String.valueOf(authentication.getPrincipal())).orElse(null);
+		if (user != null && permissionsService.explicitlyDenied(user.getId(), module, code)) {
+			throw new AccessDeniedException("Forbidden");
+		}
+	}
+
 	private boolean hasRole(Authentication authentication, String role) {
 		for (GrantedAuthority a : authentication.getAuthorities()) {
 			if (a != null && role.equalsIgnoreCase(String.valueOf(a.getAuthority()))) {

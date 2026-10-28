@@ -25,9 +25,9 @@ public class UserBootstrap implements ApplicationRunner {
 	@Override
 	public void run(ApplicationArguments args) {
 		for (RoleName roleName : RoleName.values()) {
-			roleRepository.findByName(roleName).orElseGet(() -> {
+			roleRepository.findByName(roleName.name()).orElseGet(() -> {
 				RoleEntity r = new RoleEntity();
-				r.setName(roleName);
+				r.setName(roleName.name());
 				return roleRepository.save(r);
 			});
 		}
@@ -41,7 +41,7 @@ public class UserBootstrap implements ApplicationRunner {
 			u.setEmail(email);
 			u.setName(name);
 			u.setPasswordHash(passwordEncoder.encode(password));
-			RoleEntity adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
+			RoleEntity adminRole = roleRepository.findByName(RoleName.ADMIN.name()).orElseThrow();
 			u.setRoles(Set.of(adminRole));
 			return userRepository.save(u);
 		});
