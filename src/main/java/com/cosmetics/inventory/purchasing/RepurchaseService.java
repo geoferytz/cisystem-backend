@@ -156,7 +156,7 @@ public class RepurchaseService {
             if (Boolean.TRUE.equals(order.activation)) product.setActive(true);
             int qty = receipt.quantity() != null && receipt.quantity() > 0 ? receipt.quantity() : line.quantity;
             purchaseLines.add(new PurchasingService.ReceivePurchaseLineCommand(line.productId, receipt.batchNumber(),
-                    receipt.expiryDate(), line.buyingPrice.doubleValue(), qty));
+                    receipt.expiryDate(), line.buyingPrice.doubleValue(), qty, null));
         }
         var purchase = purchasing.receivePurchase(new PurchasingService.ReceivePurchaseCommand(order.supplier, order.invoiceNumber, order.branch, purchaseLines), user);
         order.receivedPurchaseId = purchase.getId();
