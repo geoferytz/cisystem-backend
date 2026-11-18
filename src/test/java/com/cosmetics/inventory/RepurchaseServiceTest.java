@@ -2,6 +2,7 @@ package com.cosmetics.inventory;
 
 import com.cosmetics.inventory.branch.BranchScope;
 import com.cosmetics.inventory.inventory.InventoryRepository;
+import com.cosmetics.inventory.product.ProductBranchRepository;
 import com.cosmetics.inventory.product.ProductEntity;
 import com.cosmetics.inventory.product.ProductRepository;
 import com.cosmetics.inventory.purchasing.*;
@@ -31,7 +32,8 @@ class RepurchaseServiceTest {
     private final PermissionGuard permissions = mock(PermissionGuard.class);
     private final EntityManager em = mock(EntityManager.class);
     private final BranchScope branchScope = mock(BranchScope.class);
-    private final RepurchaseService service = new RepurchaseService(orders, products, inventory, purchasing, permissions, em, branchScope);
+    private final ProductBranchRepository productBranches = mock(ProductBranchRepository.class);
+    private final RepurchaseService service = new RepurchaseService(orders, products, inventory, purchasing, permissions, em, branchScope, productBranches);
     private final UsernamePasswordAuthenticationToken user = new UsernamePasswordAuthenticationToken("storekeeper", null);
     private final String id = UUID.randomUUID().toString();
     private ProductEntity product;
