@@ -1,6 +1,7 @@
 package com.cosmetics.inventory.purchasing;
 
 import com.cosmetics.inventory.inventory.InventoryRepository;
+import com.cosmetics.inventory.product.ProductBranchRepository;
 import com.cosmetics.inventory.product.ProductEntity;
 import com.cosmetics.inventory.product.ProductRepository;
 import com.cosmetics.inventory.user.PermissionGuard;
@@ -26,10 +27,12 @@ public class RepurchaseService {
     private final PermissionGuard permissions;
     private final EntityManager entityManager;
     private final BranchScope branchScope;
+    private final ProductBranchRepository productBranches;
 
     public RepurchaseService(RepurchaseOrderRepository orders, ProductRepository products, InventoryRepository inventory,
                              PurchasingService purchasing, PermissionGuard permissions, EntityManager entityManager,
-                             BranchScope branchScope) {
+                             BranchScope branchScope, ProductBranchRepository productBranches) {
+        this.productBranches = productBranches;
         this.orders = orders;
         this.products = products;
         this.inventory = inventory;
@@ -161,6 +164,31 @@ public class RepurchaseService {
         var purchase = purchasing.receivePurchase(new PurchasingService.ReceivePurchaseCommand(order.supplier, order.invoiceNumber, order.branch, purchaseLines), user);
         order.receivedPurchaseId = purchase.getId();
         return dto(order);
+    }
+
+    /**
+     * Cancels an order that has not been received yet. For new-product (activation) orders the
+     * products themselves are removed too, as long as they never went live (inactive, no batches)
+     * and are not part of another order.
+     */
+    @Transactional
+    public boolean deletePending(String id, Authentication user) {
+        var order = orders.lockById(id).orElseThrow(() -> new IllegalArgumentException("Repurchase order not found"));
+        branchScope.assertBranch(user, order.branch);
+        if (order.receivedPurchaseId != null) throw new IllegalArgumentException("This order was already received and cannot be deleted");
+        var productIds = order.lines.stream().map(l -> l.productId).toList();
+        orders.delete(order);
+        orders.flush();
+        if (!Boolean.TRUE.equals(order.activation)) return true;
+        var stillReferenced = new HashSet<Long>();
+        for (var other : orders.findAll()) other.lines.forEach(l -> stillReferenced.add(l.productId));
+        for (var productId : productIds) {
+            var product = products.findById(productId).orElse(null);
+            if (product == null || product.isActive() || !product.getBatches().isEmpty() || stillReferenced.contains(productId)) continue;
+            productBranches.deleteByProductId(productId);
+            products.delete(product);
+        }
+        return true;
     }
 
     private void requirePricePermission(ProductEntity product, BigDecimal buying, BigDecimal selling, Authentication user) {

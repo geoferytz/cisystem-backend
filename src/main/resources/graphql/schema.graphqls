@@ -99,6 +99,7 @@ type Mutation {
   receivePurchase(input: ReceivePurchaseInput!): PurchaseOrder!
   submitRepurchase(input: SubmitRepurchaseInput!): RepurchaseOrder!
   receiveRepurchase(input: ReceiveRepurchaseOrderInput!): RepurchaseOrder!
+  deletePendingRepurchase(id: ID!): Boolean!
   updatePurchase(input: UpdatePurchaseInput!): PurchaseOrder!
   deletePurchase(input: DeletePurchaseInput!): Boolean!
   createSale(input: CreateSaleInput!): SalesOrder!

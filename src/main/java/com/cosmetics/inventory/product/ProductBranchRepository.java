@@ -12,4 +12,6 @@ public interface ProductBranchRepository extends JpaRepository<ProductBranchEnti
 	List<Long> findProductIdsByBranch(@Param("branch") String branchCode);
 
 	boolean existsByProductIdAndBranchCodeIgnoreCase(Long productId, String branchCode);
+
+	void deleteByProductId(Long productId);
 }

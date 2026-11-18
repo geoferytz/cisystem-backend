@@ -128,6 +128,13 @@ public class PurchasingGraphqlController {
 		return repurchase.receive(input.id(), input.lines(), authentication);
 	}
 
+	@MutationMapping
+	@PreAuthorize("hasAnyRole('ADMIN','STOREKEEPER')")
+	public boolean deletePendingRepurchase(@Argument String id, Authentication authentication) {
+		permissionGuard.require(authentication, PermissionModule.PURCHASING, PermissionsService.PermissionAction.DELETE);
+		return repurchase.deletePending(id, authentication);
+	}
+
 	private static com.cosmetics.inventory.product.ProductService.CreateProductCommand toNewProductCommand(
 			NewPurchaseProductInput input) {
 		if (input == null) {
