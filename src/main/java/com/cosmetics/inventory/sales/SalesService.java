@@ -266,6 +266,13 @@ public class SalesService {
                 throw new IllegalArgumentException("Insufficient non-expired stock for product " + product.getSku() + " at location " + location);
             }
 
+            // A sale of the product at this location ends the "recently adjusted" highlight on all its batches.
+            for (ProductBatchEntity batch : batches) {
+                inventoryRepository.findByBatchIdAndLocation(batch.getId(), location)
+                        .filter(i -> i.getAdjustedAt() != null)
+                        .ifPresent(i -> i.setAdjustedAt(null));
+            }
+
             so.addLine(sol);
         }
     }

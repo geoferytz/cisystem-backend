@@ -116,6 +116,7 @@ public class InventoryGraphqlController {
 		}
 
 		inv.setQtyOnHand(newQty);
+		inv.setAdjustedAt(java.time.Instant.now());
 		InventoryItemEntity saved = inventoryRepository.save(inv);
 
 		StockMovementEntity mv = new StockMovementEntity();

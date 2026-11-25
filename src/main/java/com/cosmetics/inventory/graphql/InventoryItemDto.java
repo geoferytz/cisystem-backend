@@ -12,7 +12,8 @@ public record InventoryItemDto(
 		String batchNumber,
 		String expiryDate,
 		String location,
-		int qtyOnHand
+		int qtyOnHand,
+		String adjustedAt
 ) {
 	public static InventoryItemDto from(InventoryItemEntity inv) {
 		var batch = inv.getBatch();
@@ -27,7 +28,8 @@ public record InventoryItemDto(
 				batch.getBatchNumber(),
 				batch.getExpiryDate().toString(),
 				inv.getLocation(),
-				inv.getQtyOnHand()
+				inv.getQtyOnHand(),
+				inv.getAdjustedAt() != null ? inv.getAdjustedAt().toString() : null
 		);
 	}
 }

@@ -7,6 +7,7 @@ import com.cosmetics.inventory.sales.CounterCartService;
 import com.cosmetics.inventory.user.PermissionGuard;
 import com.cosmetics.inventory.user.PermissionModule;
 import com.cosmetics.inventory.user.PermissionsService;
+import com.cosmetics.inventory.whatsapp.WhatsAppReceiptDispatcher;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
@@ -23,8 +24,10 @@ public class CounterGraphqlController {
     private final PermissionGuard permissions;
     private final ExpenseCategoryRepository expenseCategories;
     private final BranchScope branchScope;
+    private final WhatsAppReceiptDispatcher whatsappReceipts;
 
-    public CounterGraphqlController(CounterCartService service, PermissionGuard permissions, ExpenseCategoryRepository expenseCategories, BranchScope branchScope) {
+    public CounterGraphqlController(CounterCartService service, PermissionGuard permissions, ExpenseCategoryRepository expenseCategories, BranchScope branchScope, WhatsAppReceiptDispatcher whatsappReceipts) {
+        this.whatsappReceipts = whatsappReceipts;
         this.service = service;
         this.permissions = permissions;
         this.expenseCategories = expenseCategories;
@@ -77,7 +80,9 @@ public class CounterGraphqlController {
         if (input.expectedTotal() == null || !Double.isFinite(input.expectedTotal())) throw new IllegalArgumentException("A valid total is required");
         if (input.discount() != null && !Double.isFinite(input.discount())) throw new IllegalArgumentException("A valid discount is required");
         if (input.amountReceived() != null && !Double.isFinite(input.amountReceived())) throw new IllegalArgumentException("A valid amount is required");
-        return service.checkout(input.id(), input.version(), BigDecimal.valueOf(input.expectedTotal()), input.discount() == null ? null : BigDecimal.valueOf(input.discount()), input.customerId(), input.paymentMethod(), input.amountReceived() == null ? null : BigDecimal.valueOf(input.amountReceived()), authentication);
+        SalesOrderDto sale = service.checkout(input.id(), input.version(), BigDecimal.valueOf(input.expectedTotal()), input.discount() == null ? null : BigDecimal.valueOf(input.discount()), input.customerId(), input.paymentMethod(), input.amountReceived() == null ? null : BigDecimal.valueOf(input.amountReceived()), authentication);
+        whatsappReceipts.dispatch(sale.id(), authentication.getName());
+        return sale;
     }
 
     @MutationMapping

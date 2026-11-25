@@ -28,6 +28,8 @@ type Query {
   purchaseOrders(branch: String): [PurchaseOrder!]!
   repurchaseProducts(branch: String): [RepurchaseProduct!]!
   pendingRepurchases(branch: String): [RepurchaseOrder!]!
+  whatsappEnabled: Boolean!
+  saleWhatsappReceipt(salesOrderId: ID!): WhatsAppMessage
   salesOrders(branch: String): [SalesOrder!]!
   customers(query: String): [Customer!]!
   customerPayments(customerId: ID!): [CustomerPayment!]!
@@ -100,6 +102,9 @@ type Mutation {
   submitRepurchase(input: SubmitRepurchaseInput!): RepurchaseOrder!
   receiveRepurchase(input: ReceiveRepurchaseOrderInput!): RepurchaseOrder!
   deletePendingRepurchase(id: ID!): Boolean!
+  sendWhatsappReceipt(salesOrderId: ID!, phone: String): WhatsAppMessage!
+  sendDebtReminder(customerId: ID!): WhatsAppMessage!
+  sendDebtReminders: WhatsAppBulkResult!
   updatePurchase(input: UpdatePurchaseInput!): PurchaseOrder!
   deletePurchase(input: DeletePurchaseInput!): Boolean!
   createSale(input: CreateSaleInput!): SalesOrder!
@@ -284,6 +289,22 @@ type RepurchaseProduct {
   buyingPrice: Float
   sellingPrice: Float
   availableQuantity: Int!
+}
+
+type WhatsAppMessage {
+  id: ID!
+  kind: String!
+  status: String!
+  phone: String
+  error: String
+  createdAt: String!
+  updatedAt: String
+}
+
+type WhatsAppBulkResult {
+  sent: Int!
+  failed: Int!
+  skipped: Int!
 }
 
 type RepurchaseOrder {
@@ -646,6 +667,7 @@ type InventoryItem {
   expiryDate: String!
   location: String!
   qtyOnHand: Int!
+  adjustedAt: String
 }
 
 type StockMovement {

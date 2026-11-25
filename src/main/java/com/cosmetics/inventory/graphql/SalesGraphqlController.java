@@ -30,9 +30,12 @@ public class SalesGraphqlController {
 	private final PasswordEncoder passwordEncoder;
 	private final com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository;
 	private final com.cosmetics.inventory.returns.SalesReturnLineRepository salesReturnLineRepository;
+	private final com.cosmetics.inventory.whatsapp.WhatsAppReceiptDispatcher whatsappReceipts;
 
 	public SalesGraphqlController(SalesService salesService, SalesOrderRepository salesOrderRepository, PermissionGuard permissionGuard, BranchScope branchScope, UserRepository userRepository, PasswordEncoder passwordEncoder,
-			com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository, com.cosmetics.inventory.returns.SalesReturnLineRepository salesReturnLineRepository) {
+			com.cosmetics.inventory.returns.SalesReturnRepository salesReturnRepository, com.cosmetics.inventory.returns.SalesReturnLineRepository salesReturnLineRepository,
+			com.cosmetics.inventory.whatsapp.WhatsAppReceiptDispatcher whatsappReceipts) {
+		this.whatsappReceipts = whatsappReceipts;
 		this.salesService = salesService;
 		this.salesOrderRepository = salesOrderRepository;
 		this.permissionGuard = permissionGuard;
@@ -96,6 +99,7 @@ public class SalesGraphqlController {
 				),
 			authentication
 		);
+		whatsappReceipts.dispatch(so.getId(), authentication.getName());
 		return SalesOrderDto.from(so);
 	}
 

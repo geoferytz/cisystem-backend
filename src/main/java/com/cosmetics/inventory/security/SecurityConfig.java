@@ -59,6 +59,8 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers("/graphiql", "/graphiql/**", "/graphql").permitAll()
+						// Meta webhook: authenticated by verify token (GET) and HMAC signature (POST) instead of JWT.
+						.requestMatchers("/webhooks/whatsapp").permitAll()
 						.anyRequest().authenticated()
 				)
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
